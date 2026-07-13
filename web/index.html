@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cloud Disk 本地网盘</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <div class="brand-mark">CD</div>
+          <div>
+            <h1>Cloud Disk</h1>
+            <p>本地运行的个人网盘</p>
+          </div>
+        </div>
+
+        <section class="panel" id="auth-panel">
+          <h2>账号</h2>
+          <label>
+            用户名
+            <input id="username" autocomplete="username" placeholder="例如 alice" />
+          </label>
+          <label>
+            密码
+            <input id="password" type="password" autocomplete="current-password" placeholder="至少 6 位" />
+          </label>
+          <div class="button-row">
+            <button id="register-btn" class="secondary">注册</button>
+            <button id="login-btn">登录</button>
+          </div>
+          <button id="logout-btn" class="ghost hidden">退出登录</button>
+          <p class="hint" id="auth-hint">先注册或登录，然后开始管理文件。</p>
+        </section>
+
+        <section class="panel">
+          <h2>新建文件夹</h2>
+          <label>
+            文件夹名称
+            <input id="folder-name" placeholder="例如 工作资料" />
+          </label>
+          <button id="create-folder-btn">创建文件夹</button>
+        </section>
+
+        <section class="panel">
+          <h2>上传文件</h2>
+          <label>
+            选择文件
+            <input id="file-input" type="file" />
+          </label>
+          <label class="check-line">
+            <input id="chunk-mode" type="checkbox" />
+            使用分片上传
+          </label>
+          <button id="upload-btn">上传到当前目录</button>
+          <div class="progress hidden" id="upload-progress">
+            <div id="upload-progress-bar"></div>
+          </div>
+          <p class="hint">小文件可以直接上传，大文件建议使用分片上传。</p>
+        </section>
+
+        <section class="panel">
+          <h2>秒传</h2>
+          <label>
+            新文件名
+            <input id="instant-name" placeholder="例如 copy.txt" />
+          </label>
+          <label>
+            文件哈希
+            <input id="instant-hash" placeholder="上传后会自动填入" />
+          </label>
+          <label>
+            文件大小
+            <input id="instant-size" placeholder="单位字节" />
+          </label>
+          <button id="instant-btn">创建秒传文件</button>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">本地网盘控制台</p>
+            <h2 id="page-title">我的文件</h2>
+          </div>
+          <div class="account-card" id="account-card">
+            <span>未登录</span>
+          </div>
+        </header>
+
+        <section class="status-card" id="status-card">
+          <span class="status-dot"></span>
+          <span id="status-text">服务已就绪。请登录后开始使用。</span>
+        </section>
+
+        <section class="content-grid">
+          <div class="main-card">
+            <div class="card-header">
+              <div>
+                <h3>文件列表</h3>
+                <p id="breadcrumb">当前位置：根目录</p>
+              </div>
+              <div class="button-row">
+                <button id="back-btn" class="secondary">返回上级</button>
+                <button id="refresh-btn" class="secondary">刷新</button>
+              </div>
+            </div>
+            <div class="table" id="file-table">
+              <div class="empty-state">登录后显示你的文件。</div>
+            </div>
+          </div>
+
+          <div class="side-stack">
+            <section class="main-card">
+              <div class="card-header">
+                <div>
+                  <h3>回收站</h3>
+                  <p>软删除的文件会先放在这里。</p>
+                </div>
+                <button id="refresh-recycle-btn" class="secondary">刷新</button>
+              </div>
+              <div class="compact-list" id="recycle-list">
+                <div class="empty-state">暂无回收站数据。</div>
+              </div>
+            </section>
+
+            <section class="main-card">
+              <h3>分享链接</h3>
+              <label>
+                访问码
+                <input id="share-code" placeholder="例如 1234，可留空" />
+              </label>
+              <p class="hint">点击文件行里的“分享”，会在这里生成可复制链接。</p>
+              <textarea id="share-output" readonly placeholder="分享链接会显示在这里"></textarea>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
+

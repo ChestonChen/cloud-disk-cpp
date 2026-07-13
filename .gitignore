@@ -1,0 +1,16 @@
+build/
+cmake-build-*/
+.cache/
+.DS_Store
+
+# Runtime data
+storage/
+logs/
+
+# Local configuration
+backend/config/local.json
+
+# IDE
+.vscode/
+.idea/
+
