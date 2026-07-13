@@ -2,6 +2,7 @@ const state = {
   token: localStorage.getItem("cloud_disk_token") || "",
   username: localStorage.getItem("cloud_disk_username") || "",
   currentFolderId: 0,
+  currentView: "files",
   folderStack: [{ id: 0, name: "根目录" }],
   showcaseMode: location.hostname.endsWith("github.io"),
   demoNextId: Number(localStorage.getItem("cloud_disk_demo_next_id") || "3"),
@@ -102,6 +103,7 @@ function enterApp(message) {
   showScreen("app");
   updateAccountUi();
   updateBreadcrumb();
+  switchView("files");
   setStatus(message);
   loadFiles().catch(showError);
   loadRecycle().catch(showError);
@@ -110,7 +112,7 @@ function enterApp(message) {
 function updateAccountUi() {
   const modeText = state.showcaseMode ? "演示账号" : "本地会话已连接";
   const used = state.showcaseMode
-    ? state.demoFiles.filter((file) => !file.isDir).reduce((sum, file) => sum + Number(file.size_bytes || 0), 0)
+    ? state.demoFiles.filter((file) => file.is_dir !== "true").reduce((sum, file) => sum + Number(file.size_bytes || 0), 0)
     : null;
   $("account-card").innerHTML = `
     <strong>${escapeHtml(state.username || "未登录")}</strong>
@@ -120,6 +122,27 @@ function updateAccountUi() {
 
 function updateBreadcrumb() {
   $("breadcrumb").textContent = `当前位置：${state.folderStack.map((item) => item.name).join(" / ")}`;
+}
+
+function switchView(view) {
+  state.currentView = view;
+  const titles = {
+    files: "全部文件",
+    recycle: "回收站",
+    share: "分享管理",
+    advanced: "高级能力",
+  };
+  $("page-title").textContent = titles[view] || "全部文件";
+  $("files-actions").classList.toggle("hidden", view !== "files");
+  ["files", "recycle", "share", "advanced"].forEach((name) => {
+    $(`${name}-view`).classList.toggle("hidden", name !== view);
+  });
+  document.querySelectorAll(".nav-item").forEach((item) => {
+    item.classList.toggle("active", item.dataset.view === view);
+  });
+  if (view === "recycle") {
+    loadRecycle().catch(showError);
+  }
 }
 
 async function register() {
@@ -181,6 +204,7 @@ function logout() {
   state.token = "";
   state.username = "";
   state.currentFolderId = 0;
+  state.currentView = "files";
   state.folderStack = [{ id: 0, name: "根目录" }];
   localStorage.removeItem("cloud_disk_token");
   localStorage.removeItem("cloud_disk_username");
@@ -568,6 +592,7 @@ async function shareFile(id) {
   if (state.showcaseMode) {
     const url = `${location.origin}${location.pathname}?share=${id}${accessCode ? `&code=${encodeURIComponent(accessCode)}` : ""}`;
     $("share-output").value = url;
+    switchView("share");
     setStatus("演示分享链接已生成。");
     return;
   }
@@ -583,6 +608,7 @@ async function shareFile(id) {
   });
   const url = `${location.origin}${data.url}${accessCode ? `&code=${encodeURIComponent(accessCode)}` : ""}`;
   $("share-output").value = url;
+  switchView("share");
   try {
     await navigator.clipboard.writeText(url);
     setStatus("分享链接已生成，并已复制到剪贴板。");
@@ -624,6 +650,10 @@ function bindEvents() {
   $("refresh-btn").addEventListener("click", () => loadFiles().catch(showError));
   $("refresh-recycle-btn").addEventListener("click", () => loadRecycle().catch(showError));
   $("back-btn").addEventListener("click", backFolder);
+
+  document.querySelectorAll(".nav-item").forEach((item) => {
+    item.addEventListener("click", () => switchView(item.dataset.view || "files"));
+  });
 
   document.body.addEventListener("click", (event) => {
     const target = event.target;

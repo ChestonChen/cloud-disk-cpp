@@ -18,8 +18,8 @@
         </div>
         <div class="auth-copy">
           <p class="eyebrow">个人文件中心</p>
-          <h2>把上传、分享和回收站放进一个清爽界面。</h2>
-          <p>注册后进入网盘工作台。你可以创建文件夹、上传文件、生成分享链接，也可以体验分片上传和秒传。</p>
+          <h2>登录后进入你的文件工作台。</h2>
+          <p>像常见网盘一样管理文件：上传、下载、分享、回收站、分片上传和秒传，都集中在清晰的工作台里。</p>
         </div>
       </div>
 
@@ -39,13 +39,13 @@
           <button id="login-btn">登录</button>
           <button id="register-btn" class="secondary">注册</button>
         </div>
-        <p class="hint">GitHub Pages 会进入演示模式。本机启动 C++ 后端后，会使用真实注册和登录接口。</p>
+        <p class="hint">GitHub Pages 是演示模式。本机启动 C++ 后端后，会使用真实注册和登录接口。</p>
       </div>
     </section>
 
-    <div class="app-shell hidden" id="app-shell">
-      <aside class="sidebar">
-        <div class="brand-block">
+    <div class="drive-shell hidden" id="app-shell">
+      <aside class="drive-sidebar">
+        <div class="brand-block compact-brand">
           <div class="brand-mark">CD</div>
           <div>
             <h1>Cloud Disk</h1>
@@ -53,61 +53,41 @@
           </div>
         </div>
 
-        <section class="panel">
-          <h2>新建文件夹</h2>
-          <label>
-            文件夹名称
-            <input id="folder-name" placeholder="例如 工作资料" />
-          </label>
-          <button id="create-folder-btn">创建文件夹</button>
-        </section>
+        <nav class="drive-nav" aria-label="网盘导航">
+          <button class="nav-item active" data-view="files">
+            <span>全部文件</span>
+            <small>上传、下载、建文件夹</small>
+          </button>
+          <button class="nav-item" data-view="recycle">
+            <span>回收站</span>
+            <small>恢复或永久删除</small>
+          </button>
+          <button class="nav-item" data-view="share">
+            <span>分享管理</span>
+            <small>访问码和公开链接</small>
+          </button>
+          <button class="nav-item" data-view="advanced">
+            <span>高级能力</span>
+            <small>秒传和分片上传</small>
+          </button>
+        </nav>
 
-        <section class="panel">
-          <h2>上传文件</h2>
-          <label>
-            选择文件
-            <input id="file-input" type="file" />
-          </label>
-          <label class="check-line">
-            <input id="chunk-mode" type="checkbox" />
-            使用分片上传
-          </label>
-          <button id="upload-btn">上传到当前目录</button>
-          <div class="progress hidden" id="upload-progress">
-            <div id="upload-progress-bar"></div>
-          </div>
-          <p class="hint">小文件可以直接上传，大文件建议使用分片上传。</p>
-        </section>
-
-        <section class="panel">
-          <h2>秒传</h2>
-          <label>
-            新文件名
-            <input id="instant-name" placeholder="例如 copy.txt" />
-          </label>
-          <label>
-            文件哈希
-            <input id="instant-hash" placeholder="上传后会自动填入" />
-          </label>
-          <label>
-            文件大小
-            <input id="instant-size" placeholder="单位字节" />
-          </label>
-          <button id="instant-btn">创建秒传文件</button>
-        </section>
+        <div class="storage-card" id="account-card">
+          <span>未登录</span>
+        </div>
+        <button id="logout-btn" class="ghost full-width">退出登录</button>
       </aside>
 
-      <main class="workspace">
-        <header class="topbar">
+      <main class="drive-main">
+        <header class="drive-topbar">
           <div>
             <p class="eyebrow">网盘工作台</p>
-            <h2 id="page-title">我的文件</h2>
+            <h2 id="page-title">全部文件</h2>
+            <p id="breadcrumb">当前位置：根目录</p>
           </div>
-          <div class="top-actions">
-            <div class="account-card" id="account-card">
-              <span>未登录</span>
-            </div>
-            <button id="logout-btn" class="ghost">退出登录</button>
+          <div class="topbar-actions">
+            <button id="back-btn" class="secondary">返回上级</button>
+            <button id="refresh-btn" class="secondary">刷新</button>
           </div>
         </header>
 
@@ -116,46 +96,102 @@
           <span id="status-text">服务已就绪。</span>
         </section>
 
-        <section class="content-grid">
-          <div class="main-card">
-            <div class="card-header">
+        <section class="quick-actions" id="files-actions">
+          <div class="quick-card upload-card">
+            <div>
+              <h3>上传文件</h3>
+              <p>选择文件后上传到当前目录。</p>
+            </div>
+            <div class="upload-controls">
+              <input id="file-input" type="file" />
+              <label class="check-line">
+                <input id="chunk-mode" type="checkbox" />
+                使用分片上传
+              </label>
+              <button id="upload-btn">上传</button>
+            </div>
+            <div class="progress hidden" id="upload-progress">
+              <div id="upload-progress-bar"></div>
+            </div>
+          </div>
+
+          <div class="quick-card folder-card">
+            <div>
+              <h3>新建文件夹</h3>
+              <p>给文件分区，避免堆在根目录。</p>
+            </div>
+            <div class="inline-form">
+              <input id="folder-name" placeholder="例如 工作资料" />
+              <button id="create-folder-btn">创建</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="drive-content">
+          <div class="content-panel" id="files-view">
+            <div class="section-header">
               <div>
-                <h3>文件列表</h3>
-                <p id="breadcrumb">当前位置：根目录</p>
-              </div>
-              <div class="button-row">
-                <button id="back-btn" class="secondary">返回上级</button>
-                <button id="refresh-btn" class="secondary">刷新</button>
+                <h3>当前目录</h3>
+                <p>文件夹可以打开，文件可以下载、分享或删除。</p>
               </div>
             </div>
-            <div class="table" id="file-table">
+            <div class="table file-list" id="file-table">
               <div class="empty-state">当前目录还是空的。</div>
             </div>
           </div>
 
-          <div class="side-stack">
-            <section class="main-card">
-              <div class="card-header">
-                <div>
-                  <h3>回收站</h3>
-                  <p>软删除的文件会先放在这里。</p>
-                </div>
-                <button id="refresh-recycle-btn" class="secondary">刷新</button>
+          <div class="content-panel hidden" id="recycle-view">
+            <div class="section-header">
+              <div>
+                <h3>回收站</h3>
+                <p>软删除的文件会先放在这里，你可以恢复或永久删除。</p>
               </div>
-              <div class="compact-list" id="recycle-list">
-                <div class="empty-state">暂无回收站数据。</div>
-              </div>
-            </section>
+              <button id="refresh-recycle-btn" class="secondary">刷新</button>
+            </div>
+            <div class="compact-list" id="recycle-list">
+              <div class="empty-state">暂无回收站数据。</div>
+            </div>
+          </div>
 
-            <section class="main-card">
-              <h3>分享链接</h3>
-              <label>
-                访问码
-                <input id="share-code" placeholder="例如 1234，可留空" />
-              </label>
-              <p class="hint">点击文件行里的“分享”，会在这里生成可复制链接。</p>
+          <div class="content-panel hidden" id="share-view">
+            <div class="section-header">
+              <div>
+                <h3>分享管理</h3>
+                <p>先回到全部文件，点击某个文件的“分享”按钮生成链接。</p>
+              </div>
+            </div>
+            <label>
+              默认访问码
+              <input id="share-code" placeholder="例如 1234，可留空" />
+            </label>
+            <label>
+              最新分享链接
               <textarea id="share-output" readonly placeholder="分享链接会显示在这里"></textarea>
-            </section>
+            </label>
+          </div>
+
+          <div class="content-panel hidden" id="advanced-view">
+            <div class="section-header">
+              <div>
+                <h3>高级能力</h3>
+                <p>上传文件后会自动填入哈希和大小，你可以用它体验秒传。</p>
+              </div>
+            </div>
+            <div class="advanced-grid">
+              <label>
+                新文件名
+                <input id="instant-name" placeholder="例如 copy.txt" />
+              </label>
+              <label>
+                文件哈希
+                <input id="instant-hash" placeholder="上传后会自动填入" />
+              </label>
+              <label>
+                文件大小
+                <input id="instant-size" placeholder="单位字节" />
+              </label>
+            </div>
+            <button id="instant-btn">创建秒传文件</button>
           </div>
         </section>
       </main>
