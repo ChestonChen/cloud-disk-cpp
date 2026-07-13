@@ -616,7 +616,9 @@ async function shareFile(id) {
     }),
   });
   const base = state.desktopMode ? "http://127.0.0.1:18080" : location.origin;
-  const url = `${base}${data.url}${accessCode ? `&code=${encodeURIComponent(accessCode)}` : ""}`;
+  const shareUrl = data.url.startsWith("http") ? data.url : `${base}${data.url}`;
+  const separator = shareUrl.includes("?") ? "&" : "?";
+  const url = accessCode ? `${shareUrl}${separator}code=${encodeURIComponent(accessCode)}` : shareUrl;
   $("share-output").value = url;
   switchView("share");
   try {

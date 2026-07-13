@@ -4,7 +4,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$ROOT_DIR/build"
 BIN="$BUILD_DIR/cloud-disk"
-PORT="${CLOUD_DISK_TEST_PORT:-18080}"
+PORT="${CLOUD_DISK_TEST_PORT:-$(python3 - <<'PY'
+import socket
+
+with socket.socket() as sock:
+    sock.bind(("127.0.0.1", 0))
+    print(sock.getsockname()[1])
+PY
+)}"
 TMP_DIR="$(mktemp -d)"
 SERVER_PID=""
 
@@ -141,13 +148,34 @@ share="$(curl -fsS -X POST "http://127.0.0.1:$PORT/api/shares" \
   -H 'Content-Type: application/json' \
   -d "{\"file_id\":\"$copy_id\",\"access_code\":\"1234\",\"allow_download\":\"true\"}")"
 assert_contains "$share" '"token":"' "share should return token"
+assert_contains "$share" "/share?token=" "share should return user-facing share page URL"
 share_token="$(extract_json_string "$share" "data.token")"
 
+share_page="$(curl -fsS "http://127.0.0.1:$PORT/share?token=$share_token&code=1234")"
+assert_contains "$share_page" 'Cloud Disk 文件分享' "share page should be readable in a browser"
+assert_contains "$share_page" '下载文件' "share page should expose a download action"
 public_meta="$(curl -fsS "http://127.0.0.1:$PORT/api/public/share?token=$share_token&code=1234")"
 assert_contains "$public_meta" '"name":"hello-copy.txt"' "public share metadata should expose file name"
 public_download="$(curl -fsS "http://127.0.0.1:$PORT/api/public/download?token=$share_token&code=1234")"
 if [[ "$public_download" != "hello cloud disk" ]]; then
   echo "ASSERTION FAILED: public share download should match content" >&2
+  exit 1
+fi
+
+bob="bob_$RANDOM"
+curl -fsS -X POST "http://127.0.0.1:$PORT/api/user/register" \
+  -H 'Content-Type: application/json' \
+  -d "{\"username\":\"$bob\",\"password\":\"$password\"}" >/dev/null
+bob_login="$(curl -fsS -X POST "http://127.0.0.1:$PORT/api/user/login" \
+  -H 'Content-Type: application/json' \
+  -d "{\"username\":\"$bob\",\"password\":\"$password\"}")"
+bob_token="$(extract_json_string "$bob_login" "data.token")"
+bob_private_status="$(curl -sS -o "$TMP_DIR/bob-private-download" -w '%{http_code}' \
+  "http://127.0.0.1:$PORT/api/files/download?id=$copy_id" \
+  -H "Authorization: Bearer $bob_token")"
+if [[ "$bob_private_status" != "404" ]]; then
+  echo "ASSERTION FAILED: another user should not download private files by id" >&2
+  echo "Status: $bob_private_status" >&2
   exit 1
 fi
 
@@ -211,6 +239,16 @@ list_deleted_folder="$(curl -fsS "http://127.0.0.1:$PORT/api/files?parent_id=$fo
 if [[ "$list_deleted_folder" == *'"name":"nested.txt"'* ]]; then
   echo "ASSERTION FAILED: deleting folder should hide nested files" >&2
   echo "Actual: $list_deleted_folder" >&2
+  exit 1
+fi
+recycle_after_folder_delete="$(curl -fsS "http://127.0.0.1:$PORT/api/recycle" -H "Authorization: Bearer $token")"
+assert_contains "$recycle_after_folder_delete" '"name":"docs"' "deleted folder should appear in recycle bin"
+assert_contains "$recycle_after_folder_delete" '"name":"nested.txt"' "deleted child file should appear in recycle bin"
+curl -fsS -X DELETE "http://127.0.0.1:$PORT/api/recycle/permanent?id=$folder_id" -H "Authorization: Bearer $token" >/dev/null
+recycle_after_folder_permanent="$(curl -fsS "http://127.0.0.1:$PORT/api/recycle" -H "Authorization: Bearer $token")"
+if [[ "$recycle_after_folder_permanent" == *'"name":"nested.txt"'* ]]; then
+  echo "ASSERTION FAILED: permanently deleting a folder should also remove deleted children" >&2
+  echo "Actual: $recycle_after_folder_permanent" >&2
   exit 1
 fi
 

@@ -4,6 +4,7 @@ import concurrent.futures
 import json
 import os
 import pathlib
+import socket
 import statistics
 import subprocess
 import tempfile
@@ -16,6 +17,12 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build"
 BIN = BUILD / ("cloud-disk.exe" if os.name == "nt" else "cloud-disk")
+
+
+def pick_free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
 
 
 def build_backend() -> None:
@@ -108,7 +115,7 @@ def main() -> int:
     parser.add_argument("--requests", type=int, default=100, help="number of upload/download/list flows")
     parser.add_argument("--concurrency", type=int, default=10, help="parallel workers")
     parser.add_argument("--payload-size", type=int, default=1024, help="bytes appended to each uploaded file")
-    parser.add_argument("--port", type=int, default=int(os.environ.get("CLOUD_DISK_LOAD_PORT", "18082")))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("CLOUD_DISK_LOAD_PORT") or pick_free_port()))
     args = parser.parse_args()
 
     build_backend()

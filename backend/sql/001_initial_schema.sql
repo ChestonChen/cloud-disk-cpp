@@ -22,9 +22,10 @@ CREATE TABLE IF NOT EXISTS file_objects (
 CREATE TABLE IF NOT EXISTS files (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     user_id BIGINT NOT NULL,
-    parent_id BIGINT NULL,
+    parent_id BIGINT NOT NULL DEFAULT 0,
     object_id BIGINT NULL,
     name VARCHAR(255) NOT NULL,
+    size_bytes BIGINT NOT NULL DEFAULT 0,
     is_dir BOOLEAN NOT NULL DEFAULT FALSE,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
     deleted_at DATETIME NULL,
@@ -69,7 +70,7 @@ CREATE TABLE IF NOT EXISTS upload_chunks (
 CREATE TABLE IF NOT EXISTS shares (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     share_token CHAR(16) NOT NULL UNIQUE,
-    access_code_hash VARCHAR(255) NULL,
+    access_code VARCHAR(32) NOT NULL DEFAULT '',
     user_id BIGINT NOT NULL,
     file_id BIGINT NOT NULL,
     expires_at DATETIME NULL,

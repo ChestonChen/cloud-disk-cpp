@@ -2,6 +2,7 @@
 import json
 import os
 import pathlib
+import socket
 import subprocess
 import sys
 import tempfile
@@ -14,7 +15,15 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build"
 BIN = BUILD / ("cloud-disk.exe" if os.name == "nt" else "cloud-disk")
-PORT = int(os.environ.get("CLOUD_DISK_TEST_PORT", "18081"))
+
+
+def pick_free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+PORT = int(os.environ.get("CLOUD_DISK_TEST_PORT") or pick_free_port())
 BASE = f"http://127.0.0.1:{PORT}"
 
 
@@ -95,6 +104,8 @@ def main() -> int:
 
             folder = json_request("POST", "/api/folders", {"parent_id": "0", "name": "docs"}, token)
             folder_id = folder["id"]
+            nested = json.loads(request("POST", f"/api/files/upload?parent_id={folder_id}&name=nested.txt",
+                                        b"nested content", token, "application/octet-stream")[1].decode())["data"]
 
             status, raw = request("POST", "/api/files/upload?parent_id=0&name=hello.txt",
                                   b"hello cloud disk", token, "application/octet-stream")
@@ -114,10 +125,19 @@ def main() -> int:
                 "access_code": "1234",
                 "allow_download": "true",
             }, token)
+            assert "/share?token=" in share["url"], "分享应返回可直接打开的页面链接"
+            status, raw = request("GET", f"/share?token={share['token']}&code=1234")
+            assert status == 200 and "下载文件" in raw.decode(), "分享页应展示下载入口"
             public_meta = json_request("GET", f"/api/public/share?token={share['token']}&code=1234")
             assert public_meta["name"] == "hello-copy.txt", "分享元数据应返回文件名"
             status, raw = request("GET", f"/api/public/download?token={share['token']}&code=1234")
             assert status == 200 and raw == b"hello cloud disk", "分享下载内容应正确"
+
+            other = f"other_{int(time.time() * 1000)}"
+            json_request("POST", "/api/user/register", {"username": other, "password": password})
+            other_token = json_request("POST", "/api/user/login", {"username": other, "password": password})["token"]
+            status, _ = request("GET", f"/api/files/download?id={instant['id']}", token=other_token)
+            assert status == 404, "其他账号不能通过私有文件 id 下载"
 
             chunk_content = "chunk-onechunk-two"
             session = json_request("POST", "/api/uploads/init", {
@@ -149,6 +169,11 @@ def main() -> int:
             assert permanent["permanently_deleted"] == "true", "永久删除应成功"
 
             request("DELETE", f"/api/files?id={folder_id}", token=token)
+            recycle = json_request("GET", "/api/recycle", token=token)
+            assert any(item["id"] == nested["id"] for item in recycle), "删除文件夹应把子文件放入回收站"
+            json_request("DELETE", f"/api/recycle/permanent?id={folder_id}", token=token)
+            recycle = json_request("GET", "/api/recycle", token=token)
+            assert not any(item["id"] == nested["id"] for item in recycle), "永久删除文件夹应移除子文件"
             print("FUNCTIONAL TEST OK")
             return 0
         finally:

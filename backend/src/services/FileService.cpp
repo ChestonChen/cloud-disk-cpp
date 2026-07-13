@@ -9,6 +9,29 @@
 #include <stdexcept>
 
 namespace cloud_disk {
+namespace {
+
+std::vector<FileEntry> collectDeletedSubtree(const std::vector<FileEntry>& recycleBin,
+                                             std::int64_t rootId) {
+    std::vector<FileEntry> result;
+    for (const auto& file : recycleBin) {
+        if (file.id == rootId) {
+            result.push_back(file);
+            break;
+        }
+    }
+
+    for (std::size_t i = 0; i < result.size(); ++i) {
+        for (const auto& file : recycleBin) {
+            if (file.parentId == result[i].id) {
+                result.push_back(file);
+            }
+        }
+    }
+    return result;
+}
+
+} // namespace
 
 FileService::FileService(MetadataStore& store, std::filesystem::path storageRoot)
     : store_(store),
@@ -189,13 +212,21 @@ bool FileService::restoreFile(std::int64_t userId, std::int64_t fileId) {
 }
 
 bool FileService::permanentDeleteFile(std::int64_t userId, std::int64_t fileId) {
-    auto removed = store_.permanentDeleteFile(userId, fileId);
-    if (!removed || removed->isDir || removed->objectId == 0) {
-        return removed.has_value();
+    auto targets = collectDeletedSubtree(store_.listRecycleBin(userId), fileId);
+    if (targets.empty()) {
+        return false;
     }
-    auto object = store_.decrementObjectRef(removed->objectId);
-    if (object && object->refCount == 0) {
-        std::filesystem::remove(object->storagePath);
+
+    for (const auto& target : targets) {
+        auto removed = store_.permanentDeleteFile(userId, target.id);
+        if (!removed || removed->isDir || removed->objectId == 0) {
+            continue;
+        }
+
+        auto object = store_.decrementObjectRef(removed->objectId);
+        if (object && object->refCount == 0) {
+            std::filesystem::remove(object->storagePath);
+        }
     }
     return true;
 }

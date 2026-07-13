@@ -160,6 +160,18 @@ curl -X POST http://127.0.0.1:8080/api/shares \
   -d '{"file_id":"1","access_code":"1234","allow_download":"true"}'
 ```
 
+返回值里包含：
+
+- `url`：普通用户可直接打开的分享页面，例如 `http://127.0.0.1:8080/share?token=...`。
+- `api_url`：公开分享元数据接口。
+- `download_url`：公开下载接口。
+
+浏览器打开分享页：
+
+```bash
+open "http://127.0.0.1:8080/share?token=$SHARE_TOKEN&code=1234"
+```
+
 查看公开分享信息：
 
 ```bash
@@ -172,4 +184,6 @@ curl "http://127.0.0.1:8080/api/public/share?token=$SHARE_TOKEN&code=1234"
 curl "http://127.0.0.1:8080/api/public/download?token=$SHARE_TOKEN&code=1234" \
   -o shared-file
 ```
+
+说明：私有文件下载接口需要登录，并且只能下载当前账号自己的文件；公开分享接口不需要登录，但必须满足分享 token、访问码和下载权限校验。
 

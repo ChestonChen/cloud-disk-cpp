@@ -4,6 +4,7 @@
 #include "utils/HttpServer.h"
 #include "utils/Json.h"
 
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -60,6 +61,55 @@ HttpResponse staticFileResponse(const std::filesystem::path& path, const std::st
     return response;
 }
 
+std::string htmlEscape(const std::string& value) {
+    std::string escaped;
+    for (char ch : value) {
+        switch (ch) {
+        case '&':
+            escaped += "&amp;";
+            break;
+        case '<':
+            escaped += "&lt;";
+            break;
+        case '>':
+            escaped += "&gt;";
+            break;
+        case '"':
+            escaped += "&quot;";
+            break;
+        default:
+            escaped.push_back(ch);
+            break;
+        }
+    }
+    return escaped;
+}
+
+std::string urlEncode(const std::string& value) {
+    std::ostringstream out;
+    out << std::hex << std::uppercase;
+    for (unsigned char ch : value) {
+        if (std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.' || ch == '~') {
+            out << static_cast<char>(ch);
+        } else {
+            out << '%' << std::setw(2) << std::setfill('0') << static_cast<int>(ch);
+        }
+    }
+    return out.str();
+}
+
+std::string requestBaseUrl(const HttpRequest& request) {
+    std::string proto = getHeader(request, "X-Forwarded-Proto");
+    std::string host = getHeader(request, "Host");
+    if (proto.empty()) {
+        proto = "http";
+    }
+    if (host.empty()) {
+        host = "127.0.0.1";
+    }
+    return proto + "://" + host;
+}
+
 std::string fileEntryWithObjectJson(const FileEntry& entry, const FileService& files) {
     auto fields = JsonObject {
         {"id", std::to_string(entry.id)},
@@ -89,6 +139,14 @@ bool shareCodeMatches(const ShareLink& share, const HttpRequest& request) {
     return share.accessCode.empty() || getQuery(request, "code") == share.accessCode;
 }
 
+HttpResponse sharePage(int status, const std::string& body) {
+    HttpResponse response;
+    response.status = status;
+    response.contentType = "text/html; charset=utf-8";
+    response.body = body;
+    return response;
+}
+
 } // namespace
 
 int main() {
@@ -115,6 +173,43 @@ int main() {
 
     server.route("GET", "/app.js", [&](const HttpRequest&) {
         return staticFileResponse(webRoot / "app.js", "application/javascript; charset=utf-8");
+    });
+
+    server.route("GET", "/share", [&](const HttpRequest& request) {
+        auto share = store.findShare(getQuery(request, "token"));
+        if (!share || !shareCodeMatches(*share, request)) {
+            return sharePage(404, "<!doctype html><meta charset=\"utf-8\"><title>分享不可用</title>"
+                                  "<body><h1>分享不存在或访问码错误</h1></body>");
+        }
+        auto file = store.findFile(share->userId, share->fileId);
+        if (!file) {
+            return sharePage(404, "<!doctype html><meta charset=\"utf-8\"><title>分享不可用</title>"
+                                  "<body><h1>文件已被删除或分享已失效</h1></body>");
+        }
+
+        store.increaseShareView(share->token);
+        std::string downloadUrl = "/api/public/download?token=" + urlEncode(share->token);
+        if (!share->accessCode.empty()) {
+            downloadUrl += "&code=" + urlEncode(getQuery(request, "code"));
+        }
+        std::ostringstream body;
+        body << "<!doctype html><html lang=\"zh-CN\"><meta charset=\"utf-8\">"
+             << "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+             << "<title>Cloud Disk 分享</title>"
+             << "<body style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
+             << "max-width:680px;margin:64px auto;padding:0 20px;line-height:1.7;color:#172033\">"
+             << "<h1>Cloud Disk 文件分享</h1>"
+             << "<p>文件名：<strong>" << htmlEscape(file->name) << "</strong></p>"
+             << "<p>大小：" << file->sizeBytes << " bytes</p>";
+        if (share->allowDownload) {
+            body << "<p><a style=\"display:inline-block;padding:10px 16px;border-radius:10px;"
+                 << "background:#2563eb;color:white;text-decoration:none\" href=\""
+                 << htmlEscape(downloadUrl) << "\">下载文件</a></p>";
+        } else {
+            body << "<p>分享者关闭了下载权限。</p>";
+        }
+        body << "</body></html>";
+        return sharePage(200, body.str());
     });
 
     server.route("GET", "/health", [](const HttpRequest&) {
@@ -376,9 +471,13 @@ int main() {
                                            newShareToken(),
                                            body["access_code"],
                                            body["allow_download"] != "false");
+            std::string token = urlEncode(share.token);
+            std::string baseUrl = requestBaseUrl(request);
             return jsonResponse(201, okJson(jsonObject({
                                          {"token", share.token},
-                                         {"url", "/api/public/share?token=" + share.token},
+                                         {"url", baseUrl + "/share?token=" + token},
+                                         {"api_url", baseUrl + "/api/public/share?token=" + token},
+                                         {"download_url", baseUrl + "/api/public/download?token=" + token},
                                          {"allow_download", share.allowDownload ? "true" : "false"},
                                      })));
         } catch (const std::exception& ex) {
