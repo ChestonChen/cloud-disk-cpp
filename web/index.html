@@ -7,33 +7,51 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="app-shell">
-      <aside class="sidebar">
-        <div class="brand-block">
+    <section class="auth-screen" id="auth-screen">
+      <div class="auth-hero">
+        <div class="brand-block auth-brand">
           <div class="brand-mark">CD</div>
           <div>
             <h1>Cloud Disk</h1>
             <p>本地运行的个人网盘</p>
           </div>
         </div>
+        <div class="auth-copy">
+          <p class="eyebrow">个人文件中心</p>
+          <h2>把上传、分享和回收站放进一个清爽界面。</h2>
+          <p>注册后进入网盘工作台。你可以创建文件夹、上传文件、生成分享链接，也可以体验分片上传和秒传。</p>
+        </div>
+      </div>
 
-        <section class="panel" id="auth-panel">
-          <h2>账号</h2>
-          <label>
-            用户名
-            <input id="username" autocomplete="username" placeholder="例如 alice" />
-          </label>
-          <label>
-            密码
-            <input id="password" type="password" autocomplete="current-password" placeholder="至少 6 位" />
-          </label>
-          <div class="button-row">
-            <button id="register-btn" class="secondary">注册</button>
-            <button id="login-btn">登录</button>
+      <div class="auth-card">
+        <div class="mode-pill" id="mode-pill">本机后端模式</div>
+        <h2>登录 Cloud Disk</h2>
+        <p class="hint" id="auth-hint">没有账号可以直接注册。</p>
+        <label>
+          用户名
+          <input id="username" autocomplete="username" placeholder="例如 alice" />
+        </label>
+        <label>
+          密码
+          <input id="password" type="password" autocomplete="current-password" placeholder="至少 6 位" />
+        </label>
+        <div class="button-row">
+          <button id="login-btn">登录</button>
+          <button id="register-btn" class="secondary">注册</button>
+        </div>
+        <p class="hint">GitHub Pages 会进入演示模式。本机启动 C++ 后端后，会使用真实注册和登录接口。</p>
+      </div>
+    </section>
+
+    <div class="app-shell hidden" id="app-shell">
+      <aside class="sidebar">
+        <div class="brand-block">
+          <div class="brand-mark">CD</div>
+          <div>
+            <h1>Cloud Disk</h1>
+            <p id="sidebar-subtitle">我的文件工作台</p>
           </div>
-          <button id="logout-btn" class="ghost hidden">退出登录</button>
-          <p class="hint" id="auth-hint">先注册或登录，然后开始管理文件。</p>
-        </section>
+        </div>
 
         <section class="panel">
           <h2>新建文件夹</h2>
@@ -82,17 +100,20 @@
       <main class="workspace">
         <header class="topbar">
           <div>
-            <p class="eyebrow">本地网盘控制台</p>
+            <p class="eyebrow">网盘工作台</p>
             <h2 id="page-title">我的文件</h2>
           </div>
-          <div class="account-card" id="account-card">
-            <span>未登录</span>
+          <div class="top-actions">
+            <div class="account-card" id="account-card">
+              <span>未登录</span>
+            </div>
+            <button id="logout-btn" class="ghost">退出登录</button>
           </div>
         </header>
 
         <section class="status-card" id="status-card">
           <span class="status-dot"></span>
-          <span id="status-text">服务已就绪。请登录后开始使用。</span>
+          <span id="status-text">服务已就绪。</span>
         </section>
 
         <section class="content-grid">
@@ -108,7 +129,7 @@
               </div>
             </div>
             <div class="table" id="file-table">
-              <div class="empty-state">登录后显示你的文件。</div>
+              <div class="empty-state">当前目录还是空的。</div>
             </div>
           </div>
 

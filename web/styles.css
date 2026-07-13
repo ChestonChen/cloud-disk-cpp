@@ -120,6 +120,91 @@ textarea {
   resize: vertical;
 }
 
+.auth-screen {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) 440px;
+  gap: 1.25rem;
+  min-height: 100dvh;
+  padding: 1.25rem;
+}
+
+.auth-hero,
+.auth-card {
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  box-shadow: var(--shadow);
+}
+
+.auth-hero {
+  display: grid;
+  align-content: space-between;
+  min-height: calc(100dvh - 2.5rem);
+  padding: clamp(1.2rem, 4vw, 3rem);
+  overflow: hidden;
+  position: relative;
+}
+
+.auth-hero::after {
+  content: "";
+  position: absolute;
+  right: -10rem;
+  bottom: -12rem;
+  width: 30rem;
+  height: 30rem;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgb(33 110 100 / 0.18), transparent 66%);
+  pointer-events: none;
+}
+
+.auth-brand {
+  width: fit-content;
+  box-shadow: none;
+}
+
+.auth-copy {
+  display: grid;
+  gap: 1rem;
+  max-width: 760px;
+  position: relative;
+  z-index: 1;
+}
+
+.auth-copy h2 {
+  max-width: 12ch;
+  font-size: clamp(2.8rem, 7vw, 6.8rem);
+  line-height: 0.95;
+}
+
+.auth-copy p:last-child {
+  max-width: 56ch;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.8;
+}
+
+.auth-card {
+  display: grid;
+  align-content: center;
+  gap: 1rem;
+  padding: clamp(1.2rem, 3vw, 2rem);
+}
+
+.auth-card h2 {
+  font-size: clamp(2rem, 4vw, 3.4rem);
+}
+
+.mode-pill {
+  width: fit-content;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  padding: 0.45rem 0.72rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 360px minmax(0, 1fr);
@@ -259,6 +344,12 @@ h3 {
   color: var(--text);
 }
 
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .status-card {
   display: flex;
   align-items: center;
@@ -392,9 +483,15 @@ h3 {
 }
 
 @media (max-width: 1180px) {
+  .auth-screen,
   .app-shell,
   .content-grid {
     grid-template-columns: 1fr;
+  }
+
+  .auth-hero {
+    min-height: auto;
+    gap: 6rem;
   }
 
   .topbar {
@@ -408,8 +505,13 @@ h3 {
 }
 
 @media (max-width: 720px) {
+  .auth-screen,
   .app-shell {
     padding: 0.75rem;
+  }
+
+  .auth-copy h2 {
+    font-size: clamp(2.4rem, 14vw, 4.2rem);
   }
 
   .file-row,
@@ -425,6 +527,12 @@ h3 {
 
   .row-actions {
     justify-content: flex-start;
+  }
+
+  .top-actions {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
   }
 }
 

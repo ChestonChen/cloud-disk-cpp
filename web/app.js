@@ -4,13 +4,27 @@ const state = {
   currentFolderId: 0,
   folderStack: [{ id: 0, name: "根目录" }],
   showcaseMode: location.hostname.endsWith("github.io"),
+  demoNextId: Number(localStorage.getItem("cloud_disk_demo_next_id") || "3"),
+  demoFiles: JSON.parse(localStorage.getItem("cloud_disk_demo_files") || "[]"),
+  demoRecycle: JSON.parse(localStorage.getItem("cloud_disk_demo_recycle") || "[]"),
 };
 
 const $ = (id) => document.getElementById(id);
 
+function saveDemoState() {
+  localStorage.setItem("cloud_disk_demo_files", JSON.stringify(state.demoFiles));
+  localStorage.setItem("cloud_disk_demo_recycle", JSON.stringify(state.demoRecycle));
+  localStorage.setItem("cloud_disk_demo_next_id", String(state.demoNextId));
+}
+
 function setStatus(message, isError = false) {
   $("status-text").textContent = message;
   $("status-card").style.borderColor = isError ? "rgb(180 35 24 / 0.35)" : "";
+}
+
+function showScreen(name) {
+  $("auth-screen").classList.toggle("hidden", name !== "auth");
+  $("app-shell").classList.toggle("hidden", name !== "app");
 }
 
 function authHeaders(extra = {}) {
@@ -48,16 +62,6 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
-function setUploadProgress(percent) {
-  $("upload-progress").classList.remove("hidden");
-  $("upload-progress-bar").style.width = `${Math.max(0, Math.min(100, percent))}%`;
-}
-
-function hideUploadProgress() {
-  $("upload-progress").classList.add("hidden");
-  $("upload-progress-bar").style.width = "0%";
-}
-
 function contentHash(bytes) {
   const mask = (1n << 64n) - 1n;
   let hash = 1469598103934665603n;
@@ -79,13 +83,39 @@ function contentHash(bytes) {
   return parts.join("");
 }
 
-function updateAuthUi() {
-  const loggedIn = Boolean(state.token);
-  $("logout-btn").classList.toggle("hidden", !loggedIn);
-  $("auth-hint").textContent = loggedIn ? `已登录：${state.username}` : "先注册或登录，然后开始管理文件。";
-  $("account-card").innerHTML = loggedIn
-    ? `<strong>${escapeHtml(state.username)}</strong><span>本地会话已连接</span>`
-    : "<span>未登录</span>";
+function setUploadProgress(percent) {
+  $("upload-progress").classList.remove("hidden");
+  $("upload-progress-bar").style.width = `${Math.max(0, Math.min(100, percent))}%`;
+}
+
+function hideUploadProgress() {
+  $("upload-progress").classList.add("hidden");
+  $("upload-progress-bar").style.width = "0%";
+}
+
+function updateModeUi() {
+  $("mode-pill").textContent = state.showcaseMode ? "GitHub Pages 演示模式" : "本机后端模式";
+  $("sidebar-subtitle").textContent = state.showcaseMode ? "前端演示工作台" : "我的文件工作台";
+}
+
+function enterApp(message) {
+  showScreen("app");
+  updateAccountUi();
+  updateBreadcrumb();
+  setStatus(message);
+  loadFiles().catch(showError);
+  loadRecycle().catch(showError);
+}
+
+function updateAccountUi() {
+  const modeText = state.showcaseMode ? "演示账号" : "本地会话已连接";
+  const used = state.showcaseMode
+    ? state.demoFiles.filter((file) => !file.isDir).reduce((sum, file) => sum + Number(file.size_bytes || 0), 0)
+    : null;
+  $("account-card").innerHTML = `
+    <strong>${escapeHtml(state.username || "未登录")}</strong>
+    <span>${state.showcaseMode ? `已用空间：${formatBytes(used)}` : modeText}</span>
+  `;
 }
 
 function updateBreadcrumb() {
@@ -95,17 +125,45 @@ function updateBreadcrumb() {
 async function register() {
   const username = $("username").value.trim();
   const password = $("password").value;
+  if (!username || password.length < 6) {
+    throw new Error("请输入用户名和至少 6 位密码。");
+  }
+
+  if (state.showcaseMode) {
+    state.token = `demo-${Date.now()}`;
+    state.username = username;
+    localStorage.setItem("cloud_disk_token", state.token);
+    localStorage.setItem("cloud_disk_username", state.username);
+    seedDemoFiles();
+    enterApp("演示账号已创建。你现在可以直接体验网盘流程。");
+    return;
+  }
+
   await fetchJson("/api/user/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
   });
-  setStatus("注册成功。现在可以直接登录。");
+  $("auth-hint").textContent = "注册成功。现在可以登录。";
 }
 
 async function login() {
   const username = $("username").value.trim();
   const password = $("password").value;
+  if (!username || password.length < 6) {
+    throw new Error("请输入用户名和至少 6 位密码。");
+  }
+
+  if (state.showcaseMode) {
+    state.token = `demo-${Date.now()}`;
+    state.username = username;
+    localStorage.setItem("cloud_disk_token", state.token);
+    localStorage.setItem("cloud_disk_username", state.username);
+    seedDemoFiles();
+    enterApp("已进入 GitHub Pages 演示模式。这里的数据保存在浏览器本地。");
+    return;
+  }
+
   const data = await fetchJson("/api/user/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -115,9 +173,8 @@ async function login() {
   state.username = username;
   localStorage.setItem("cloud_disk_token", state.token);
   localStorage.setItem("cloud_disk_username", state.username);
-  updateAuthUi();
-  setStatus("登录成功。你可以开始上传和管理文件。");
-  await Promise.all([loadProfile(), loadFiles(), loadRecycle()]);
+  await loadProfile();
+  enterApp("登录成功。你可以开始上传和管理文件。");
 }
 
 function logout() {
@@ -127,18 +184,46 @@ function logout() {
   state.folderStack = [{ id: 0, name: "根目录" }];
   localStorage.removeItem("cloud_disk_token");
   localStorage.removeItem("cloud_disk_username");
-  updateAuthUi();
-  updateBreadcrumb();
-  $("file-table").innerHTML = '<div class="empty-state">登录后显示你的文件。</div>';
-  $("recycle-list").innerHTML = '<div class="empty-state">暂无回收站数据。</div>';
-  setStatus("已退出登录。");
+  $("password").value = "";
+  showScreen("auth");
+  $("auth-hint").textContent = state.showcaseMode
+    ? "这是 GitHub Pages 演示模式，输入任意账号即可体验。"
+    : "没有账号可以直接注册。";
+}
+
+function seedDemoFiles() {
+  if (state.demoFiles.length > 0) return;
+  state.demoFiles = [
+    {
+      id: "1",
+      parent_id: "0",
+      name: "作品材料",
+      is_dir: "true",
+      is_deleted: "false",
+      size_bytes: "0",
+    },
+    {
+      id: "2",
+      parent_id: "0",
+      name: "项目说明.txt",
+      is_dir: "false",
+      is_deleted: "false",
+      size_bytes: "52",
+      content: "这是 GitHub Pages 演示文件。本机后端版支持真实持久化。",
+      sha256: "demo-readme",
+    },
+  ];
+  state.demoRecycle = [];
+  state.demoNextId = 3;
+  saveDemoState();
 }
 
 async function loadProfile() {
-  if (!state.token) return;
-  const profile = await fetchJson("/api/user/me", {
-    headers: authHeaders(),
-  });
+  if (!state.token || state.showcaseMode) {
+    updateAccountUi();
+    return;
+  }
+  const profile = await fetchJson("/api/user/me", { headers: authHeaders() });
   $("account-card").innerHTML = `
     <strong>${escapeHtml(profile.username)}</strong>
     <span>已用空间：${formatBytes(profile.storage_used)}</span>
@@ -148,11 +233,25 @@ async function loadProfile() {
 async function createFolder() {
   const name = $("folder-name").value.trim();
   if (!name) throw new Error("请输入文件夹名称。");
-  await fetchJson("/api/folders", {
-    method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ parent_id: String(state.currentFolderId), name }),
-  });
+
+  if (state.showcaseMode) {
+    state.demoFiles.push({
+      id: String(state.demoNextId++),
+      parent_id: String(state.currentFolderId),
+      name,
+      is_dir: "true",
+      is_deleted: "false",
+      size_bytes: "0",
+    });
+    saveDemoState();
+  } else {
+    await fetchJson("/api/folders", {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ parent_id: String(state.currentFolderId), name }),
+    });
+  }
+
   $("folder-name").value = "";
   setStatus("文件夹创建成功。");
   await loadFiles();
@@ -161,9 +260,12 @@ async function createFolder() {
 async function loadFiles() {
   if (!state.token) return;
   updateBreadcrumb();
-  const files = await fetchJson(`/api/files?parent_id=${state.currentFolderId}`, {
-    headers: authHeaders(),
-  });
+  if (state.showcaseMode) {
+    renderFiles(state.demoFiles.filter((file) => file.parent_id === String(state.currentFolderId)));
+    updateAccountUi();
+    return;
+  }
+  const files = await fetchJson(`/api/files?parent_id=${state.currentFolderId}`, { headers: authHeaders() });
   renderFiles(files);
 }
 
@@ -176,11 +278,12 @@ function renderFiles(files) {
 
   table.innerHTML = files
     .map((file) => {
-      const type = file.is_dir === "true" ? "夹" : "文";
-      const openButton = file.is_dir === "true"
+      const isDir = file.is_dir === "true";
+      const type = isDir ? "夹" : "文";
+      const openButton = isDir
         ? `<button class="secondary" data-open-folder="${file.id}" data-folder-name="${escapeHtml(file.name)}">打开</button>`
         : `<button class="secondary" data-download="${file.id}">下载</button>`;
-      const shareButton = file.is_dir === "true" ? "" : `<button class="secondary" data-share="${file.id}">分享</button>`;
+      const shareButton = isDir ? "" : `<button class="secondary" data-share="${file.id}">分享</button>`;
       return `
         <div class="file-row">
           <div class="file-main">
@@ -216,6 +319,28 @@ async function uploadSelectedFile() {
 
 async function uploadDirect(file) {
   setUploadProgress(35);
+  if (state.showcaseMode) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const hash = contentHash(bytes);
+    const text = await file.text().catch(() => "");
+    state.demoFiles.push({
+      id: String(state.demoNextId++),
+      parent_id: String(state.currentFolderId),
+      name: file.name,
+      is_dir: "false",
+      is_deleted: "false",
+      size_bytes: String(file.size),
+      content: text || `演示文件：${file.name}`,
+      sha256: hash,
+    });
+    saveDemoState();
+    fillInstantFields(file.name, hash, file.size);
+    setUploadProgress(100);
+    setStatus(`演示上传完成：${file.name}。`);
+    setTimeout(hideUploadProgress, 500);
+    return;
+  }
+
   const response = await fetch(`/api/files/upload?parent_id=${state.currentFolderId}&name=${encodeURIComponent(file.name)}`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/octet-stream" }),
@@ -223,15 +348,22 @@ async function uploadDirect(file) {
   });
   const doc = await response.json();
   if (!response.ok || doc.code !== 0) throw new Error(doc.message || "上传失败。");
-  $("instant-hash").value = doc.data.sha256 || "";
-  $("instant-size").value = doc.data.size_bytes || "";
-  $("instant-name").value = `copy-${file.name}`;
+  fillInstantFields(file.name, doc.data.sha256 || "", doc.data.size_bytes || file.size);
   setUploadProgress(100);
   setStatus(`上传完成：${file.name}。哈希已填入秒传区域。`);
   setTimeout(hideUploadProgress, 500);
 }
 
 async function uploadChunked(file) {
+  if (state.showcaseMode) {
+    setUploadProgress(25);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    setUploadProgress(70);
+    await uploadDirect(file);
+    setStatus(`演示分片上传完成：${file.name}。`);
+    return;
+  }
+
   const bytes = new Uint8Array(await file.arrayBuffer());
   const hash = contentHash(bytes);
   const chunkSize = 1024 * 1024;
@@ -261,6 +393,7 @@ async function uploadChunked(file) {
         size_bytes: String(file.size),
       }),
     });
+    fillInstantFields(file.name, hash, file.size);
     setUploadProgress(100);
     setStatus(`服务端已有相同内容，已秒传：${file.name}。`);
     setTimeout(hideUploadProgress, 500);
@@ -282,12 +415,16 @@ async function uploadChunked(file) {
     method: "POST",
     headers: authHeaders(),
   });
-  $("instant-hash").value = completed.sha256 || hash;
-  $("instant-size").value = completed.size_bytes || String(file.size);
-  $("instant-name").value = `copy-${file.name}`;
+  fillInstantFields(file.name, completed.sha256 || hash, completed.size_bytes || file.size);
   setUploadProgress(100);
   setStatus(`分片上传完成：${file.name}。`);
   setTimeout(hideUploadProgress, 500);
+}
+
+function fillInstantFields(name, hash, size) {
+  $("instant-hash").value = hash;
+  $("instant-size").value = String(size);
+  $("instant-name").value = `copy-${name}`;
 }
 
 async function instantUpload() {
@@ -295,52 +432,87 @@ async function instantUpload() {
   const sha256 = $("instant-hash").value.trim();
   const sizeBytes = $("instant-size").value.trim();
   if (!name || !sha256 || !sizeBytes) throw new Error("请填写秒传文件名、哈希和大小。");
-  await fetchJson("/api/files/instant", {
-    method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({
+
+  if (state.showcaseMode) {
+    const source = state.demoFiles.find((file) => file.sha256 === sha256 && file.is_dir !== "true");
+    if (!source) throw new Error("演示模式下没有找到相同哈希的文件，请先上传一次。");
+    state.demoFiles.push({
+      ...source,
+      id: String(state.demoNextId++),
       parent_id: String(state.currentFolderId),
       name,
-      sha256,
-      size_bytes: sizeBytes,
-    }),
-  });
+    });
+    saveDemoState();
+  } else {
+    await fetchJson("/api/files/instant", {
+      method: "POST",
+      headers: authHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        parent_id: String(state.currentFolderId),
+        name,
+        sha256,
+        size_bytes: sizeBytes,
+      }),
+    });
+  }
+
   setStatus("秒传文件创建成功。");
   await Promise.all([loadFiles(), loadProfile()]);
 }
 
 async function downloadFile(id) {
-  const response = await fetch(`/api/files/download?id=${id}`, {
-    headers: authHeaders(),
-  });
+  if (state.showcaseMode) {
+    const file = state.demoFiles.find((item) => item.id === String(id));
+    if (!file) throw new Error("文件不存在。");
+    downloadText(file.name, file.content || "");
+    setStatus(`演示下载已开始：${file.name}`);
+    return;
+  }
+
+  const response = await fetch(`/api/files/download?id=${id}`, { headers: authHeaders() });
   if (!response.ok) throw new Error("下载失败。");
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") || "";
   const match = disposition.match(/filename="([^"]+)"/);
   const filename = match ? match[1] : `file-${id}`;
+  downloadBlob(filename, blob);
+  setStatus(`已开始下载：${filename}`);
+}
+
+function downloadText(filename, text) {
+  downloadBlob(filename, new Blob([text], { type: "text/plain;charset=utf-8" }));
+}
+
+function downloadBlob(filename, blob) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
-  setStatus(`已开始下载：${filename}`);
 }
 
 async function deleteFile(id) {
-  await fetchJson(`/api/files?id=${id}`, {
-    method: "DELETE",
-    headers: authHeaders(),
-  });
+  if (state.showcaseMode) {
+    const index = state.demoFiles.findIndex((file) => file.id === String(id));
+    if (index < 0) throw new Error("文件不存在。");
+    const [removed] = state.demoFiles.splice(index, 1);
+    state.demoRecycle.push({ ...removed, is_deleted: "true" });
+    saveDemoState();
+  } else {
+    await fetchJson(`/api/files?id=${id}`, { method: "DELETE", headers: authHeaders() });
+  }
   setStatus("文件已移入回收站。");
   await Promise.all([loadFiles(), loadRecycle(), loadProfile()]);
 }
 
 async function loadRecycle() {
   if (!state.token) return;
-  const files = await fetchJson("/api/recycle", {
-    headers: authHeaders(),
-  });
+  if (state.showcaseMode) {
+    renderRecycle(state.demoRecycle);
+    return;
+  }
+  const files = await fetchJson("/api/recycle", { headers: authHeaders() });
   renderRecycle(files);
 }
 
@@ -367,25 +539,39 @@ function renderRecycle(files) {
 }
 
 async function restoreFile(id) {
-  await fetchJson(`/api/recycle/restore?id=${id}`, {
-    method: "POST",
-    headers: authHeaders(),
-  });
+  if (state.showcaseMode) {
+    const index = state.demoRecycle.findIndex((file) => file.id === String(id));
+    if (index < 0) throw new Error("回收站里没有这个文件。");
+    const [file] = state.demoRecycle.splice(index, 1);
+    state.demoFiles.push({ ...file, is_deleted: "false" });
+    saveDemoState();
+  } else {
+    await fetchJson(`/api/recycle/restore?id=${id}`, { method: "POST", headers: authHeaders() });
+  }
   setStatus("文件已恢复。");
-  await Promise.all([loadFiles(), loadRecycle()]);
+  await Promise.all([loadFiles(), loadRecycle(), loadProfile()]);
 }
 
 async function permanentDelete(id) {
-  await fetchJson(`/api/recycle/permanent?id=${id}`, {
-    method: "DELETE",
-    headers: authHeaders(),
-  });
+  if (state.showcaseMode) {
+    state.demoRecycle = state.demoRecycle.filter((file) => file.id !== String(id));
+    saveDemoState();
+  } else {
+    await fetchJson(`/api/recycle/permanent?id=${id}`, { method: "DELETE", headers: authHeaders() });
+  }
   setStatus("文件已永久删除。");
   await Promise.all([loadRecycle(), loadProfile()]);
 }
 
 async function shareFile(id) {
   const accessCode = $("share-code").value.trim();
+  if (state.showcaseMode) {
+    const url = `${location.origin}${location.pathname}?share=${id}${accessCode ? `&code=${encodeURIComponent(accessCode)}` : ""}`;
+    $("share-output").value = url;
+    setStatus("演示分享链接已生成。");
+    return;
+  }
+
   const data = await fetchJson("/api/shares", {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
@@ -419,7 +605,13 @@ function backFolder() {
 }
 
 function showError(error) {
-  setStatus(error.message || String(error), true);
+  const message = error.message || String(error);
+  const target = $("app-shell").classList.contains("hidden") ? $("auth-hint") : null;
+  if (target) {
+    target.textContent = message;
+  } else {
+    setStatus(message, true);
+  }
 }
 
 function bindEvents() {
@@ -454,20 +646,19 @@ function bindEvents() {
 
 async function init() {
   bindEvents();
-  updateAuthUi();
-  updateBreadcrumb();
+  updateModeUi();
   if (state.showcaseMode) {
-    setStatus("当前是 GitHub Pages 展示模式。完整上传下载功能请在本机启动后端后访问 http://127.0.0.1:8080。");
-    return;
+    $("auth-hint").textContent = "这是 GitHub Pages 演示模式，输入任意账号即可体验。";
   }
-  if (state.token) {
-    try {
-      await Promise.all([loadProfile(), loadFiles(), loadRecycle()]);
-      setStatus("已恢复上次登录状态。");
-    } catch (error) {
-      logout();
-      showError(error);
+
+  if (state.token && state.username) {
+    seedDemoFiles();
+    enterApp(state.showcaseMode ? "已恢复演示账号。" : "已恢复上次登录状态。");
+    if (!state.showcaseMode) {
+      await loadProfile().catch(() => logout());
     }
+  } else {
+    showScreen("auth");
   }
 }
 
