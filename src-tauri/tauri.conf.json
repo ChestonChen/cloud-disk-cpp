@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Cloud Disk",
+  "version": "0.1.0",
+  "identifier": "com.chestonchen.clouddisk",
+  "build": {
+    "beforeBuildCommand": "python3 scripts/prepare_tauri_sidecar.py",
+    "beforeDevCommand": "python3 scripts/prepare_tauri_sidecar.py",
+    "frontendDist": "../web"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Cloud Disk",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 960,
+        "minHeight": 680
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "externalBin": [
+      "binaries/cloud-disk"
+    ],
+    "category": "Productivity"
+  }
+}

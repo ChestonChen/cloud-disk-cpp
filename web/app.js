@@ -4,6 +4,7 @@ const state = {
   currentFolderId: 0,
   currentView: "files",
   folderStack: [{ id: 0, name: "根目录" }],
+  desktopMode: Boolean(window.__TAURI_INTERNALS__) || location.hostname === "tauri.localhost",
   showcaseMode: location.hostname.endsWith("github.io"),
   demoNextId: Number(localStorage.getItem("cloud_disk_demo_next_id") || "3"),
   demoFiles: JSON.parse(localStorage.getItem("cloud_disk_demo_files") || "[]"),
@@ -11,6 +12,10 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
+
+function apiUrl(path) {
+  return state.desktopMode ? `http://127.0.0.1:18080${path}` : path;
+}
 
 function saveDemoState() {
   localStorage.setItem("cloud_disk_demo_files", JSON.stringify(state.demoFiles));
@@ -33,7 +38,7 @@ function authHeaders(extra = {}) {
 }
 
 async function fetchJson(path, options = {}) {
-  const response = await fetch(path, options);
+  const response = await fetch(apiUrl(path), options);
   const text = await response.text();
   let doc;
   try {
@@ -95,7 +100,11 @@ function hideUploadProgress() {
 }
 
 function updateModeUi() {
-  $("mode-pill").textContent = state.showcaseMode ? "GitHub Pages 演示模式" : "本机后端模式";
+  $("mode-pill").textContent = state.showcaseMode
+    ? "GitHub Pages 演示模式"
+    : state.desktopMode
+      ? "桌面 App 模式"
+      : "本机后端模式";
   $("sidebar-subtitle").textContent = state.showcaseMode ? "前端演示工作台" : "我的文件工作台";
 }
 
@@ -365,7 +374,7 @@ async function uploadDirect(file) {
     return;
   }
 
-  const response = await fetch(`/api/files/upload?parent_id=${state.currentFolderId}&name=${encodeURIComponent(file.name)}`, {
+  const response = await fetch(apiUrl(`/api/files/upload?parent_id=${state.currentFolderId}&name=${encodeURIComponent(file.name)}`), {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/octet-stream" }),
     body: file,
@@ -427,7 +436,7 @@ async function uploadChunked(file) {
   for (let index = 0; index < totalChunks; index += 1) {
     const start = index * chunkSize;
     const end = Math.min(file.size, start + chunkSize);
-    await fetch(`/api/uploads/chunk?upload_id=${session.upload_id}&chunk_index=${index}`, {
+    await fetch(apiUrl(`/api/uploads/chunk?upload_id=${session.upload_id}&chunk_index=${index}`), {
       method: "POST",
       headers: authHeaders({ "Content-Type": "application/octet-stream" }),
       body: file.slice(start, end),
@@ -493,7 +502,7 @@ async function downloadFile(id) {
     return;
   }
 
-  const response = await fetch(`/api/files/download?id=${id}`, { headers: authHeaders() });
+  const response = await fetch(apiUrl(`/api/files/download?id=${id}`), { headers: authHeaders() });
   if (!response.ok) throw new Error("下载失败。");
   const blob = await response.blob();
   const disposition = response.headers.get("Content-Disposition") || "";
@@ -606,7 +615,8 @@ async function shareFile(id) {
       allow_download: "true",
     }),
   });
-  const url = `${location.origin}${data.url}${accessCode ? `&code=${encodeURIComponent(accessCode)}` : ""}`;
+  const base = state.desktopMode ? "http://127.0.0.1:18080" : location.origin;
+  const url = `${base}${data.url}${accessCode ? `&code=${encodeURIComponent(accessCode)}` : ""}`;
   $("share-output").value = url;
   switchView("share");
   try {

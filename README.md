@@ -53,6 +53,27 @@ web/
 
 ## 构建和运行
 
+### 桌面 App
+
+普通用户优先使用桌面 App。Mac 构建产物：
+
+```text
+src-tauri/target/release/bundle/dmg/Cloud Disk_0.1.0_aarch64.dmg
+```
+
+双击 DMG，把 `Cloud Disk.app` 拖到 `Applications`，然后打开 App 即可。App 会自动启动本地 C++ 后端，用户不需要手动启动服务。
+
+开发者重新构建：
+
+```bash
+npm install
+npm run desktop:build
+```
+
+详细说明见 `docs/DESKTOP_APP.md`。
+
+### 本机浏览器模式
+
 ```bash
 cmake -S backend -B build
 cmake --build build

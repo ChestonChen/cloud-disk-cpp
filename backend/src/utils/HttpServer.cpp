@@ -130,6 +130,10 @@ std::string buildResponse(const HttpResponse& response) {
     out << "Content-Length: " << response.body.size() << "\r\n";
     out << "Content-Type: " << response.contentType << "\r\n";
     out << "Connection: close\r\n";
+    out << "Access-Control-Allow-Origin: *\r\n";
+    out << "Access-Control-Allow-Headers: Content-Type, Authorization\r\n";
+    out << "Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\n";
+    out << "Access-Control-Expose-Headers: Content-Disposition\r\n";
     for (const auto& [key, value] : response.headers) {
         out << key << ": " << value << "\r\n";
     }
@@ -210,6 +214,9 @@ void HttpServer::run() {
 }
 
 HttpResponse HttpServer::handle(const HttpRequest& request) const {
+    if (request.method == "OPTIONS") {
+        return HttpResponse {200, "application/json", {}, okJson(jsonObject({{"preflight", "ok"}}))};
+    }
     auto it = handlers_.find(request.method + " " + request.path);
     if (it == handlers_.end()) {
         return HttpResponse {404, "application/json", {}, errorJson(404, "route not found")};
