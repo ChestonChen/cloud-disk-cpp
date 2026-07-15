@@ -6,10 +6,8 @@
 
 namespace cloud_disk {
 
+// 根据文件内容生成稳定哈希；目前用轻量实现，后续可替换成 OpenSSL SHA-256。
 std::string contentHash(const std::string& content) {
-    // FNV-1a based deterministic content fingerprint for the no-dependency MVP.
-    // The storage/service interface is named as a content hash so OpenSSL SHA-256
-    // can replace this implementation without touching callers.
     std::uint64_t hash = 1469598103934665603ULL;
     for (unsigned char ch : content) {
         hash ^= ch;

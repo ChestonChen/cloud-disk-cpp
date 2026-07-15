@@ -3,13 +3,10 @@ build-*/
 cmake-build-*/
 .cache/
 .DS_Store
-node_modules/
-src-tauri/target/
-src-tauri/binaries/*
-!src-tauri/binaries/.gitkeep
 
 # Runtime data
 storage/
+uploads/
 logs/
 
 # Local configuration

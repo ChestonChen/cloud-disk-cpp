@@ -4,7 +4,6 @@ const state = {
   currentFolderId: 0,
   currentView: "files",
   folderStack: [{ id: 0, name: "根目录" }],
-  desktopMode: Boolean(window.__TAURI_INTERNALS__) || location.hostname === "tauri.localhost",
   showcaseMode: location.hostname.endsWith("github.io"),
   demoNextId: Number(localStorage.getItem("cloud_disk_demo_next_id") || "3"),
   demoFiles: JSON.parse(localStorage.getItem("cloud_disk_demo_files") || "[]"),
@@ -14,7 +13,7 @@ const state = {
 const $ = (id) => document.getElementById(id);
 
 function apiUrl(path) {
-  return state.desktopMode ? `http://127.0.0.1:18080${path}` : path;
+  return path;
 }
 
 function saveDemoState() {
@@ -102,13 +101,11 @@ function hideUploadProgress() {
 function updateModeUi() {
   $("mode-pill").textContent = state.showcaseMode
     ? "GitHub Pages 演示模式"
-    : state.desktopMode
-      ? "桌面 App 模式"
-      : "本机后端模式";
+    : "后端连接模式";
   $("sidebar-subtitle").textContent = state.showcaseMode ? "前端演示工作台" : "我的文件工作台";
 }
 
-function enterApp(message) {
+function enterWorkspace(message) {
   showScreen("app");
   updateAccountUi();
   updateBreadcrumb();
@@ -167,7 +164,7 @@ async function register() {
     localStorage.setItem("cloud_disk_token", state.token);
     localStorage.setItem("cloud_disk_username", state.username);
     seedDemoFiles();
-    enterApp("演示账号已创建。你现在可以直接体验网盘流程。");
+    enterWorkspace("演示账号已创建。你现在可以直接体验网盘流程。");
     return;
   }
 
@@ -192,7 +189,7 @@ async function login() {
     localStorage.setItem("cloud_disk_token", state.token);
     localStorage.setItem("cloud_disk_username", state.username);
     seedDemoFiles();
-    enterApp("已进入 GitHub Pages 演示模式。这里的数据保存在浏览器本地。");
+    enterWorkspace("已进入 GitHub Pages 演示模式。这里的数据保存在浏览器本地。");
     return;
   }
 
@@ -206,7 +203,7 @@ async function login() {
   localStorage.setItem("cloud_disk_token", state.token);
   localStorage.setItem("cloud_disk_username", state.username);
   await loadProfile();
-  enterApp("登录成功。你可以开始上传和管理文件。");
+  enterWorkspace("登录成功。你可以开始上传和管理文件。");
 }
 
 function logout() {
@@ -615,7 +612,7 @@ async function shareFile(id) {
       allow_download: "true",
     }),
   });
-  const base = state.desktopMode ? "http://127.0.0.1:18080" : location.origin;
+  const base = location.origin;
   const shareUrl = data.url.startsWith("http") ? data.url : `${base}${data.url}`;
   const separator = shareUrl.includes("?") ? "&" : "?";
   const url = accessCode ? `${shareUrl}${separator}code=${encodeURIComponent(accessCode)}` : shareUrl;
@@ -695,7 +692,7 @@ async function init() {
 
   if (state.token && state.username) {
     seedDemoFiles();
-    enterApp(state.showcaseMode ? "已恢复演示账号。" : "已恢复上次登录状态。");
+    enterWorkspace(state.showcaseMode ? "已恢复演示账号。" : "已恢复上次登录状态。");
     if (!state.showcaseMode) {
       await loadProfile().catch(() => logout());
     }

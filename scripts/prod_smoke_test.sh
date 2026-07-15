@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN="$ROOT_DIR/build-prod/cloud-disk-prod"
+BIN="$ROOT_DIR/build/cloud-disk"
 PORT="${CLOUD_DISK_PROD_TEST_PORT:-$(python3 - <<'PY'
 import socket
 
@@ -36,9 +36,42 @@ print(value)
 PY
 }
 
+content_hash() {
+  python3 - "$1" <<'PY'
+import sys
+
+content = sys.argv[1].encode()
+mask = (1 << 64) - 1
+hash_val = 1469598103934665603
+for byte in content:
+    hash_val ^= byte
+    hash_val = (hash_val * 1099511628211) & mask
+
+parts = []
+for i in range(4):
+    mixed = (hash_val + 0x9E3779B97F4A7C15 * (i + 1)) & mask
+    mixed ^= mixed >> 30
+    mixed = (mixed * 0xBF58476D1CE4E5B9) & mask
+    mixed ^= mixed >> 27
+    mixed = (mixed * 0x94D049BB133111EB) & mask
+    mixed ^= mixed >> 31
+    parts.append(f"{mixed:016x}")
+print("".join(parts))
+PY
+}
+
+auth_curl() {
+  local method="$1"
+  local path="$2"
+  shift 2
+  curl -fsS -X "$method" "http://127.0.0.1:$PORT$path" \
+    -H "Authorization: Bearer $token" \
+    "$@"
+}
+
 if [[ ! -x "$BIN" ]]; then
-  echo "cloud-disk-prod not found. Build it with:" >&2
-  echo "cmake -S backend -B build-prod -DCLOUD_DISK_WITH_DROGON=ON && cmake --build build-prod" >&2
+  echo "cloud-disk not found. Build it with:" >&2
+  echo "cmake -S backend -B build && cmake --build build" >&2
   exit 1
 fi
 
@@ -70,21 +103,16 @@ login="$(curl -fsS -X POST "http://127.0.0.1:$PORT/api/user/login" \
   -d "{\"username\":\"$username\",\"password\":\"$password\"}")"
 token="$(extract_json_string "$login" "data.token")"
 
-upload="$(curl -fsS -X POST "http://127.0.0.1:$PORT/api/files/upload?parent_id=0&name=prod.txt" \
-  -H "Authorization: Bearer $token" \
-  --data-binary 'prod cloud disk')"
+upload="$(auth_curl POST "/api/files/upload?parent_id=0&name=prod.txt" --data-binary 'prod cloud disk')"
 file_id="$(extract_json_string "$upload" "data.id")"
 
-download="$(curl -fsS "http://127.0.0.1:$PORT/api/files/download?id=$file_id" \
-  -H "Authorization: Bearer $token")"
+download="$(auth_curl GET "/api/files/download?id=$file_id")"
 if [[ "$download" != "prod cloud disk" ]]; then
   echo "private download mismatch" >&2
   exit 1
 fi
 
-share="$(curl -fsS -X POST "http://127.0.0.1:$PORT/api/shares" \
-  -H "Authorization: Bearer $token" \
-  -H 'Content-Type: application/json' \
+share="$(auth_curl POST "/api/shares" -H 'Content-Type: application/json' \
   -d "{\"file_id\":\"$file_id\",\"access_code\":\"1234\",\"allow_download\":\"true\"}")"
 share_token="$(extract_json_string "$share" "data.token")"
 
@@ -93,5 +121,76 @@ if [[ "$public_download" != "prod cloud disk" ]]; then
   echo "public download mismatch" >&2
   exit 1
 fi
+
+# recycle: soft delete -> list -> restore -> soft delete -> permanent
+auth_curl DELETE "/api/files?id=$file_id" >/dev/null
+recycle="$(auth_curl GET "/api/recycle")"
+[[ "$recycle" == *'"id":"'"$file_id"'"'* ]] || [[ "$recycle" == *"\"id\":\"$file_id\""* ]]
+
+auth_curl POST "/api/recycle/restore?id=$file_id" >/dev/null
+files="$(auth_curl GET "/api/files?parent_id=0")"
+[[ "$files" == *"$file_id"* ]]
+
+auth_curl DELETE "/api/files?id=$file_id" >/dev/null
+auth_curl DELETE "/api/recycle/permanent?id=$file_id" >/dev/null
+recycle_empty="$(auth_curl GET "/api/recycle")"
+[[ "$recycle_empty" == *'"data":[]'* ]] || [[ "$recycle_empty" == *'"data": []'* ]]
+
+# instant upload after a fresh object exists (unique payload avoids cross-run hash collisions)
+payload="seed-body-$username-$RANDOM"
+sha="$(content_hash "$payload")"
+seed="$(auth_curl POST "/api/files/upload?parent_id=0&name=seed.bin" --data-binary "$payload")"
+seed_id="$(extract_json_string "$seed" "data.id")"
+
+init_instant="$(auth_curl POST "/api/uploads/init" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":\"0\",\"name\":\"instant.bin\",\"sha256\":\"$sha\",\"size_bytes\":\"${#payload}\",\"chunk_size\":\"4\",\"total_chunks\":\"1\"}")"
+status="$(extract_json_string "$init_instant" "data.status")"
+[[ "$status" == "instant_available" ]]
+
+instant="$(auth_curl POST "/api/files/instant" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":\"0\",\"name\":\"instant.bin\",\"sha256\":\"$sha\",\"size_bytes\":\"${#payload}\"}")"
+instant_id="$(extract_json_string "$instant" "data.id")"
+instant_dl="$(auth_curl GET "/api/files/download?id=$instant_id")"
+[[ "$instant_dl" == "$payload" ]]
+
+# chunked upload for brand-new content
+chunk_payload="ABCDEFGHIJKLMNOP-$username-$RANDOM"
+# pad/trim to multiple of 4 for simple chunking in the test below
+chunk_payload="$(printf '%s' "$chunk_payload" | python3 -c 'import sys; s=sys.stdin.read(); print(s[:((len(s)//4)*4)] if len(s)>=16 else (s+"XXXX")[:16])')"
+chunk_sha="$(content_hash "$chunk_payload")"
+chunk_len=${#chunk_payload}
+total_chunks=$((chunk_len / 4))
+init="$(auth_curl POST "/api/uploads/init" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":\"0\",\"name\":\"chunked.bin\",\"sha256\":\"$chunk_sha\",\"size_bytes\":\"$chunk_len\",\"chunk_size\":\"4\",\"total_chunks\":\"$total_chunks\"}")"
+[[ "$(extract_json_string "$init" "data.status")" == "uploading" ]]
+upload_id="$(extract_json_string "$init" "data.upload_id")"
+
+python3 - "$chunk_payload" "$PORT" "$token" "$upload_id" "$total_chunks" <<'PY'
+import sys, urllib.request
+payload, port, token, upload_id, total = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5])
+for i in range(total):
+    body = payload[i * 4:(i + 1) * 4].encode()
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/uploads/chunk?upload_id={upload_id}&chunk_index={i}",
+        data=body,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/octet-stream"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req) as resp:
+        resp.read()
+PY
+
+completed="$(auth_curl POST "/api/uploads/complete?upload_id=$upload_id")"
+chunk_id="$(extract_json_string "$completed" "data.id")"
+chunk_dl="$(auth_curl GET "/api/files/download?id=$chunk_id")"
+[[ "$chunk_dl" == "$chunk_payload" ]]
+
+# cleanup seeded files
+auth_curl DELETE "/api/files?id=$seed_id" >/dev/null
+auth_curl DELETE "/api/recycle/permanent?id=$seed_id" >/dev/null
+auth_curl DELETE "/api/files?id=$instant_id" >/dev/null
+auth_curl DELETE "/api/recycle/permanent?id=$instant_id" >/dev/null
+auth_curl DELETE "/api/files?id=$chunk_id" >/dev/null
+auth_curl DELETE "/api/recycle/permanent?id=$chunk_id" >/dev/null
 
 echo "PROD SMOKE OK"
