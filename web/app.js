@@ -430,7 +430,17 @@ async function uploadChunked(file) {
     return;
   }
 
+  const uploaded = new Set((session.uploaded_chunks || []).map((item) => Number(item)));
+  const status = await fetchJson(`/api/uploads/status?upload_id=${session.upload_id}`, {
+    headers: authHeaders(),
+  });
+  (status.uploaded_chunks || []).forEach((item) => uploaded.add(Number(item)));
+
   for (let index = 0; index < totalChunks; index += 1) {
+    if (uploaded.has(index)) {
+      setUploadProgress(Math.round(((index + 1) / totalChunks) * 85));
+      continue;
+    }
     const start = index * chunkSize;
     const end = Math.min(file.size, start + chunkSize);
     await fetch(apiUrl(`/api/uploads/chunk?upload_id=${session.upload_id}&chunk_index=${index}`), {
@@ -447,7 +457,7 @@ async function uploadChunked(file) {
   });
   fillInstantFields(file.name, completed.sha256 || hash, completed.size_bytes || file.size);
   setUploadProgress(100);
-  setStatus(`分片上传完成：${file.name}。`);
+  setStatus(`分片上传完成：${file.name}${uploaded.size ? "（含断点续传）" : ""}。`);
   setTimeout(hideUploadProgress, 500);
 }
 

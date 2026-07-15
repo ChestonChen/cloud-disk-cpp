@@ -63,7 +63,7 @@ std::string parsePrimitive(const std::string& text, std::size_t& pos) {
     return text.substr(start, end - start);
 }
 
-} // namespace
+}
 
 // 解析一层 JSON 对象，当前项目的请求体都保持为简单键值结构。
 JsonObject parseFlatJsonObject(const std::string& body) {
@@ -164,5 +164,5 @@ std::string errorJson(int code, const std::string& message) {
            + "\",\"data\":{}}";
 }
 
-} // namespace cloud_disk
+}
 

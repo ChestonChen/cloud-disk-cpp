@@ -12,4 +12,4 @@ void registerFileRoutes(const MySqlDatabase& db,
                         const RedisSessionStore& sessions,
                         const std::filesystem::path& storageRoot);
 
-} // namespace cloud_disk
+}

@@ -14,5 +14,5 @@ std::filesystem::path ensureDirectory(const std::filesystem::path& path);
 // 把 token 转成适合放进路径的安全片段。
 std::string sanitizeTokenPathPart(const std::string& value);
 
-} // namespace cloud_disk
+}
 

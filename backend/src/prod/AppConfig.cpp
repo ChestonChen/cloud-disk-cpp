@@ -16,4 +16,4 @@ int envInt(const char* name, int fallback) {
     return value && *value ? std::atoi(value) : fallback;
 }
 
-} // namespace cloud_disk
+}

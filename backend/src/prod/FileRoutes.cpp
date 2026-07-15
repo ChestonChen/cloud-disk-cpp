@@ -43,7 +43,27 @@ std::string mergeChunks(const std::filesystem::path& dir, int totalChunks) {
     return merged.str();
 }
 
-} // namespace
+std::string uploadSessionJson(const std::string& uploadId,
+                              const std::string& status,
+                              const std::string& totalChunks,
+                              const std::vector<std::string>& uploadedChunks) {
+    return "{\"upload_id\":\"" + jsonEscape(uploadId) + "\",\"status\":\"" + jsonEscape(status)
+           + "\",\"total_chunks\":\"" + jsonEscape(totalChunks) + "\",\"uploaded_chunks\":"
+           + jsonArray(uploadedChunks) + "}";
+}
+
+std::vector<std::string> listUploadedChunks(const MySqlDatabase& db, const std::string& uploadId) {
+    auto chunks = db.query("SELECT chunk_index FROM upload_chunks WHERE upload_id = " + db.quote(uploadId)
+                           + " ORDER BY chunk_index");
+    std::vector<std::string> uploaded;
+    uploaded.reserve(chunks.size());
+    for (const auto& row : chunks) {
+        uploaded.push_back(row.at("chunk_index"));
+    }
+    return uploaded;
+}
+
+}
 
 void registerFileRoutes(const MySqlDatabase& db,
                         const RedisSessionStore& sessions,
@@ -173,8 +193,7 @@ void registerFileRoutes(const MySqlDatabase& db,
                        return;
                    }
 
-                   auto response = drogon::HttpResponse::newFileResponse(*path, file->name);
-                   response->addHeader("Access-Control-Expose-Headers", "Content-Disposition");
+                   auto response = fileDownloadResponse(*path, file->name, req->getHeader("range"));
                    reply(response);
                },
                drogon::k404NotFound);
@@ -227,6 +246,23 @@ void registerFileRoutes(const MySqlDatabase& db,
                         return;
                     }
 
+                    // 同一用户未完成的相同上传可续传。
+                    auto existing = db.query(
+                        "SELECT upload_id, total_chunks FROM upload_sessions WHERE user_id = "
+                        + sqlNumber(user.id) + " AND parent_id = " + sqlNumber(parentId) + " AND filename = "
+                        + db.quote(name) + " AND sha256 = " + db.quote(sha) + " AND size_bytes = "
+                        + sqlNumber(sizeBytes) + " AND chunk_size = " + sqlNumber(chunkSize)
+                        + " AND total_chunks = " + sqlNumber(static_cast<std::int64_t>(totalChunks))
+                        + " AND status = 'uploading' AND expires_at > NOW() ORDER BY id DESC LIMIT 1");
+                    if (!existing.empty()) {
+                        auto uploadId = existing[0]["upload_id"];
+                        reply(jsonResponse(
+                            drogon::k200OK,
+                            okJson(uploadSessionJson(uploadId, "uploading", existing[0]["total_chunks"],
+                                                     listUploadedChunks(db, uploadId)))));
+                        return;
+                    }
+
                     auto uploadId = newUploadId();
                     db.execute(
                         "INSERT INTO upload_sessions(upload_id, user_id, parent_id, filename, sha256, "
@@ -237,11 +273,26 @@ void registerFileRoutes(const MySqlDatabase& db,
                         + ", 'uploading', DATE_ADD(NOW(), INTERVAL 1 DAY))");
 
                     reply(jsonResponse(drogon::k201Created,
-                                       okJson(jsonObject({{"upload_id", uploadId},
-                                                          {"status", "uploading"},
-                                                          {"total_chunks",
-                                                           std::to_string(totalChunks)}}))));
+                                       okJson(uploadSessionJson(uploadId, "uploading",
+                                                                std::to_string(totalChunks), {}))));
                 });
+
+    addAuthGet("/api/uploads/status", db, sessions,
+               [&db](const drogon::HttpRequestPtr& req, HttpCallback& reply, const UserContext& user) {
+                   auto uploadId = req->getParameter("upload_id");
+                   auto rows = db.query(
+                       "SELECT upload_id, status, total_chunks FROM upload_sessions WHERE upload_id = "
+                       + db.quote(uploadId) + " AND user_id = " + sqlNumber(user.id));
+                   if (rows.empty()) {
+                       reply(errorResponse(drogon::k404NotFound, 404, "upload session not found"));
+                       return;
+                   }
+                   reply(jsonResponse(drogon::k200OK,
+                                      okJson(uploadSessionJson(rows[0]["upload_id"], rows[0]["status"],
+                                                               rows[0]["total_chunks"],
+                                                               listUploadedChunks(db, uploadId)))));
+               },
+               drogon::k404NotFound);
 
     addAuthPost("/api/uploads/chunk", db, sessions,
                 [&db, storageRoot](const drogon::HttpRequestPtr& req, HttpCallback& reply,
@@ -322,4 +373,4 @@ void registerFileRoutes(const MySqlDatabase& db,
                 });
 }
 
-} // namespace cloud_disk
+}

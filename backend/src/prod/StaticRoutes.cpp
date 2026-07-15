@@ -28,4 +28,4 @@ void registerStaticRoutes(const std::filesystem::path& webRoot) {
     });
 }
 
-} // namespace cloud_disk
+}

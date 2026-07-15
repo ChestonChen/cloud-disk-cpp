@@ -24,4 +24,4 @@ struct FileRow {
     bool isDir = false;
 };
 
-} // namespace cloud_disk
+}

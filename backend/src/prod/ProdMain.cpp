@@ -29,8 +29,8 @@ int main() {
     MySqlDatabase db(envString("CLOUD_DISK_MYSQL_HOST", "127.0.0.1"),
                      envInt("CLOUD_DISK_MYSQL_PORT", 3306),
                      envString("CLOUD_DISK_MYSQL_DATABASE", "cloud_disk"),
-                     envString("CLOUD_DISK_MYSQL_USER", "cloud_disk"),
-                     envString("CLOUD_DISK_MYSQL_PASSWORD", "cloud_disk_password"));
+                     envString("CLOUD_DISK_MYSQL_USER", "user1"),
+                     envString("CLOUD_DISK_MYSQL_PASSWORD", "123456"));
 
     registerHealthRoute();
     registerStaticRoutes(webRoot);

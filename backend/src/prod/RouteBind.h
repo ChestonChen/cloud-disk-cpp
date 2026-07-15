@@ -99,4 +99,4 @@ inline void addAuthDelete(const char* path,
     addAuthRoute(path, drogon::Delete, db, sessions, std::move(handler), errorStatus);
 }
 
-} // namespace cloud_disk
+}

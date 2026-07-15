@@ -10,4 +10,4 @@ void registerStaticRoutes(const std::filesystem::path& webRoot);
 // 注册健康检查接口，用来确认服务和技术栈状态。
 void registerHealthRoute();
 
-} // namespace cloud_disk
+}

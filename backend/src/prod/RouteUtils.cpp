@@ -3,7 +3,7 @@
 #include "utils/Json.h"
 
 #include <chrono>
-#include <cctype>
+#include <fstream>
 #include <iomanip>
 #include <random>
 #include <sstream>
@@ -62,14 +62,17 @@ std::string newShareToken() {
     return out.str();
 }
 
-// 校验用户名是否满足项目约定的格式。
+// 校验用户名是否满足项目约定的格式：字母、数字、下划线、短横线。
 bool validUsername(const std::string& username) {
     if (username.size() < 3 || username.size() > 64) {
         return false;
     }
     for (char ch : username) {
-        bool ok = std::isalnum(static_cast<unsigned char>(ch)) || ch == '_' || ch == '-';
-        if (!ok) {
+        bool isDigit = ch >= '0' && ch <= '9';
+        bool isUpper = ch >= 'A' && ch <= 'Z';
+        bool isLower = ch >= 'a' && ch <= 'z';
+        bool isMark = ch == '_' || ch == '-';
+        if (!(isDigit || isUpper || isLower || isMark)) {
             return false;
         }
     }
@@ -224,4 +227,79 @@ std::optional<std::string> objectPath(const MySqlDatabase& db, std::int64_t obje
     return rows[0]["storage_path"];
 }
 
-} // namespace cloud_disk
+namespace {
+
+bool parseByteRange(const std::string& header,
+                    std::uint64_t fileSize,
+                    std::uint64_t& start,
+                    std::uint64_t& end) {
+    const std::string prefix = "bytes=";
+    if (header.rfind(prefix, 0) != 0 || fileSize == 0) {
+        return false;
+    }
+    auto spec = header.substr(prefix.size());
+    auto dash = spec.find('-');
+    if (dash == std::string::npos) {
+        return false;
+    }
+    auto startText = spec.substr(0, dash);
+    auto endText = spec.substr(dash + 1);
+    if (startText.empty()) {
+        return false;
+    }
+    start = static_cast<std::uint64_t>(std::stoull(startText));
+    end = endText.empty() ? (fileSize - 1) : static_cast<std::uint64_t>(std::stoull(endText));
+    if (start >= fileSize || start > end) {
+        return false;
+    }
+    if (end >= fileSize) {
+        end = fileSize - 1;
+    }
+    return true;
+}
+
+}
+
+drogon::HttpResponsePtr fileDownloadResponse(const std::string& path,
+                                             const std::string& filename,
+                                             const std::string& rangeHeader) {
+    if (rangeHeader.empty()) {
+        auto response = drogon::HttpResponse::newFileResponse(path, filename);
+        response->addHeader("Accept-Ranges", "bytes");
+        response->addHeader("Access-Control-Expose-Headers", "Content-Disposition, Accept-Ranges, Content-Range");
+        return response;
+    }
+
+    std::ifstream in(path, std::ios::binary | std::ios::ate);
+    if (!in) {
+        return errorResponse(drogon::k404NotFound, 404, "object not found");
+    }
+    auto fileSize = static_cast<std::uint64_t>(in.tellg());
+    std::uint64_t start = 0;
+    std::uint64_t end = 0;
+    if (!parseByteRange(rangeHeader, fileSize, start, end)) {
+        auto response = errorResponse(drogon::k416RequestedRangeNotSatisfiable, 416, "invalid range");
+        response->addHeader("Content-Range", "bytes */" + std::to_string(fileSize));
+        return response;
+    }
+
+    auto length = end - start + 1;
+    std::string body(static_cast<std::size_t>(length), '\0');
+    in.seekg(static_cast<std::streamoff>(start), std::ios::beg);
+    in.read(body.data(), static_cast<std::streamsize>(length));
+
+    auto response = drogon::HttpResponse::newHttpResponse();
+    response->setStatusCode(drogon::k206PartialContent);
+    response->setContentTypeString("application/octet-stream");
+    response->addHeader("Accept-Ranges", "bytes");
+    response->addHeader("Content-Range",
+                        "bytes " + std::to_string(start) + "-" + std::to_string(end) + "/"
+                            + std::to_string(fileSize));
+    response->addHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+    response->addHeader("Access-Control-Expose-Headers", "Content-Disposition, Accept-Ranges, Content-Range");
+    response->addHeader("Access-Control-Allow-Origin", "*");
+    response->setBody(std::move(body));
+    return response;
+}
+
+}

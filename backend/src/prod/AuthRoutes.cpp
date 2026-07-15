@@ -59,4 +59,4 @@ void registerAuthRoutes(const MySqlDatabase& db, const RedisSessionStore& sessio
         drogon::k401Unauthorized);
 }
 
-} // namespace cloud_disk
+}

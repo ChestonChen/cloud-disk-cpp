@@ -39,12 +39,12 @@ brew services start redis
 ```bash
 mysql -u root -e "
 CREATE DATABASE IF NOT EXISTS cloud_disk DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS 'cloud_disk'@'localhost' IDENTIFIED BY 'cloud_disk_password';
-GRANT ALL PRIVILEGES ON cloud_disk.* TO 'cloud_disk'@'localhost';
+CREATE USER IF NOT EXISTS 'user1'@'localhost' IDENTIFIED BY '123456';
+GRANT ALL PRIVILEGES ON cloud_disk.* TO 'user1'@'localhost';
 FLUSH PRIVILEGES;
 "
 
-mysql -u cloud_disk -pcloud_disk_password cloud_disk < backend/sql/001_initial_schema.sql
+mysql -u user1 -p123456 cloud_disk < backend/sql/001_initial_schema.sql
 ```
 
 ## Build
@@ -75,8 +75,8 @@ Optional environment variables:
 export CLOUD_DISK_MYSQL_HOST=127.0.0.1
 export CLOUD_DISK_MYSQL_PORT=3306
 export CLOUD_DISK_MYSQL_DATABASE=cloud_disk
-export CLOUD_DISK_MYSQL_USER=cloud_disk
-export CLOUD_DISK_MYSQL_PASSWORD=cloud_disk_password
+export CLOUD_DISK_MYSQL_USER=user1
+export CLOUD_DISK_MYSQL_PASSWORD=123456
 export CLOUD_DISK_REDIS_HOST=127.0.0.1
 export CLOUD_DISK_REDIS_PORT=6379
 export CLOUD_DISK_SESSION_TTL=86400

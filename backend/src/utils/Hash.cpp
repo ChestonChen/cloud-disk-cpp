@@ -28,5 +28,5 @@ std::string contentHash(const std::string& content) {
     return out.str();
 }
 
-} // namespace cloud_disk
+}
 

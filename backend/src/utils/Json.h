@@ -26,5 +26,5 @@ std::string okJson(const std::string& dataJson);
 // 生成统一错误响应：{"code":错误码,"message":"错误信息"}。
 std::string errorJson(int code, const std::string& message);
 
-} // namespace cloud_disk
+}
 

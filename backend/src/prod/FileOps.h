@@ -71,4 +71,4 @@ std::optional<FileRow> findDeletedFile(const MySqlDatabase& db,
                                        std::int64_t userId,
                                        std::int64_t fileId);
 
-} // namespace cloud_disk
+}

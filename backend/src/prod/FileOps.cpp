@@ -84,7 +84,7 @@ std::vector<std::int64_t> collectSubtree(const MySqlDatabase& db,
     return ids;
 }
 
-} // namespace
+}
 
 bool nameTaken(const MySqlDatabase& db,
                std::int64_t userId,
@@ -255,4 +255,4 @@ std::optional<FileRow> findDeletedFile(const MySqlDatabase& db,
                     asBool(row, "is_dir")};
 }
 
-} // namespace cloud_disk
+}

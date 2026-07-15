@@ -86,4 +86,4 @@ void MySqlDatabase::run(const std::string& sql) const {
     }
 }
 
-} // namespace cloud_disk
+}

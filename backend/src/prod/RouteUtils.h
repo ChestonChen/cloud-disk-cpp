@@ -78,4 +78,9 @@ std::string fileJson(const FileRow& file, bool isDeleted = false);
 // 根据文件对象 id 查询磁盘存储路径。
 std::optional<std::string> objectPath(const MySqlDatabase& db, std::int64_t objectId);
 
-} // namespace cloud_disk
+// 下载文件；若 rangeHeader 为 bytes=start-end 则返回 206 分片，支持断点下载。
+drogon::HttpResponsePtr fileDownloadResponse(const std::string& path,
+                                             const std::string& filename,
+                                             const std::string& rangeHeader);
+
+}

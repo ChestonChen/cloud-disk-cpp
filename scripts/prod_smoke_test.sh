@@ -185,6 +185,58 @@ chunk_id="$(extract_json_string "$completed" "data.id")"
 chunk_dl="$(auth_curl GET "/api/files/download?id=$chunk_id")"
 [[ "$chunk_dl" == "$chunk_payload" ]]
 
+# upload resume: send first half, re-init, finish remaining
+resume_payload="RESUME1234567890-$username-$RANDOM"
+resume_payload="$(printf '%s' "$resume_payload" | python3 -c 'import sys; s=sys.stdin.read(); print((s+"XXXXXXXX")[:16])')"
+resume_sha="$(content_hash "$resume_payload")"
+resume_init="$(auth_curl POST "/api/uploads/init" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":\"0\",\"name\":\"resume.bin\",\"sha256\":\"$resume_sha\",\"size_bytes\":\"16\",\"chunk_size\":\"4\",\"total_chunks\":\"4\"}")"
+resume_id="$(extract_json_string "$resume_init" "data.upload_id")"
+python3 - "$resume_payload" "$PORT" "$token" "$resume_id" <<'PY'
+import sys, urllib.request
+payload, port, token, upload_id = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+for i in range(2):  # only first 2 chunks
+    body = payload[i * 4:(i + 1) * 4].encode()
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/uploads/chunk?upload_id={upload_id}&chunk_index={i}",
+        data=body,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/octet-stream"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req) as resp:
+        resp.read()
+PY
+resume_status="$(auth_curl GET "/api/uploads/status?upload_id=$resume_id")"
+[[ "$resume_status" == *'"uploaded_chunks":[0,1]'* ]] || [[ "$resume_status" == *'"uploaded_chunks":[0, 1]'* ]]
+
+resume_again="$(auth_curl POST "/api/uploads/init" -H 'Content-Type: application/json' \
+  -d "{\"parent_id\":\"0\",\"name\":\"resume.bin\",\"sha256\":\"$resume_sha\",\"size_bytes\":\"16\",\"chunk_size\":\"4\",\"total_chunks\":\"4\"}")"
+[[ "$(extract_json_string "$resume_again" "data.upload_id")" == "$resume_id" ]]
+python3 - "$resume_payload" "$PORT" "$token" "$resume_id" <<'PY'
+import sys, urllib.request
+payload, port, token, upload_id = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+for i in (2, 3):
+    body = payload[i * 4:(i + 1) * 4].encode()
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/uploads/chunk?upload_id={upload_id}&chunk_index={i}",
+        data=body,
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/octet-stream"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req) as resp:
+        resp.read()
+PY
+resume_done="$(auth_curl POST "/api/uploads/complete?upload_id=$resume_id")"
+resume_file_id="$(extract_json_string "$resume_done" "data.id")"
+[[ "$(auth_curl GET "/api/files/download?id=$resume_file_id")" == "$resume_payload" ]]
+
+# download resume via HTTP Range
+range_code="$(curl -sS -o "$TMP_DIR/range.bin" -w '%{http_code}' \
+  -H "Authorization: Bearer $token" -H 'Range: bytes=0-5' \
+  "http://127.0.0.1:$PORT/api/files/download?id=$resume_file_id")"
+[[ "$range_code" == "206" ]]
+[[ "$(cat "$TMP_DIR/range.bin")" == "${resume_payload:0:6}" ]]
+
 # cleanup seeded files
 auth_curl DELETE "/api/files?id=$seed_id" >/dev/null
 auth_curl DELETE "/api/recycle/permanent?id=$seed_id" >/dev/null
@@ -192,5 +244,7 @@ auth_curl DELETE "/api/files?id=$instant_id" >/dev/null
 auth_curl DELETE "/api/recycle/permanent?id=$instant_id" >/dev/null
 auth_curl DELETE "/api/files?id=$chunk_id" >/dev/null
 auth_curl DELETE "/api/recycle/permanent?id=$chunk_id" >/dev/null
+auth_curl DELETE "/api/files?id=$resume_file_id" >/dev/null
+auth_curl DELETE "/api/recycle/permanent?id=$resume_file_id" >/dev/null
 
 echo "PROD SMOKE OK"

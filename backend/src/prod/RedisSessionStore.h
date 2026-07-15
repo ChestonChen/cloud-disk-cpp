@@ -16,10 +16,13 @@ public:
     // 写入登录 token，过期时间由 ttlSeconds 控制。
     void save(const std::string& token, std::int64_t userId) const;
 
-    // 根据 token 查询对应用户 id；不存在或过期时返回空。
+    // 根据 token 查询对应用户 id；命中时会刷新过期时间（滑动过期）。
+    // 不存在或已过期时返回空。
     std::optional<std::int64_t> findUserId(const std::string& token) const;
 
 private:
+    // 把已有会话的 TTL 重新设为 ttlSeconds_。
+    void touch(const std::string& token) const;
     // 生成项目专用的 Redis key，避免和其他业务数据冲突。
     static std::string key(const std::string& token);
 
@@ -37,4 +40,4 @@ private:
     int ttlSeconds_ = 86400;
 };
 
-} // namespace cloud_disk
+}

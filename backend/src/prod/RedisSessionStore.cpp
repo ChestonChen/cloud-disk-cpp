@@ -19,13 +19,19 @@ void RedisSessionStore::save(const std::string& token, std::int64_t userId) cons
     command({"SETEX", key(token), std::to_string(ttlSeconds_), std::to_string(userId)});
 }
 
-// 根据 token 查询用户 id，用于接口鉴权。
+// 根据 token 查询用户 id；查到后刷新 TTL，实现滑动过期。
 std::optional<std::int64_t> RedisSessionStore::findUserId(const std::string& token) const {
     auto value = command({"GET", key(token)});
     if (!value || value->empty()) {
         return std::nullopt;
     }
+    touch(token);
     return std::stoll(*value);
+}
+
+// 会话仍有效时，把过期时间重新推后 ttlSeconds_ 秒。
+void RedisSessionStore::touch(const std::string& token) const {
+    command({"EXPIRE", key(token), std::to_string(ttlSeconds_)});
 }
 
 // 生成统一前缀的 Redis key。
@@ -73,6 +79,9 @@ std::optional<std::string> RedisSessionStore::command(const std::vector<std::str
             result = readBytes(fd, static_cast<std::size_t>(size));
             readBytes(fd, 2);
         }
+    } else if (type == ':') {
+        // EXPIRE 等命令返回整数，例如 :1
+        result = line.substr(1);
     } else if (type == '-') {
         ::close(fd);
         throw std::runtime_error("redis error: " + line.substr(1));
@@ -109,4 +118,4 @@ std::string RedisSessionStore::readBytes(int fd, std::size_t size) {
     return out;
 }
 
-} // namespace cloud_disk
+}

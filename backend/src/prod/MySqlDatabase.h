@@ -43,4 +43,4 @@ private:
     mutable std::mutex mutex_;
 };
 
-} // namespace cloud_disk
+}
